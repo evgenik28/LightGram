@@ -1293,7 +1293,7 @@ static void TGRegisterCascadeFonts(void)
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^
     {
-        NSArray *fontNames = @[@"NotoSans-Regular", @"NotoSansMath-Regular", @"NotoSansSymbols2-Regular"];
+        NSArray *fontNames = @[@"NotoSans-Regular"];
         for (NSString *fontName in fontNames)
         {
             NSURL *url = [[NSBundle mainBundle] URLForResource:fontName withExtension:@"ttf"];

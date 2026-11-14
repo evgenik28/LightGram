@@ -4796,10 +4796,11 @@ static unsigned int overrideIndexAbove(__unused id self, __unused SEL _cmd)
             UIGraphicsBeginImageContextWithOptions(CGSizeMake((int)(size.width / 2.0f), (int)(size.height / 2.0f)), true, 1.0f);
             CGContextRef context = UIGraphicsGetCurrentContext();
             CGContextScaleCTM(context, 0.5f, 0.5f);
-            [self.window drawViewHierarchyInRect:self.window.bounds afterScreenUpdates:false];
+            [self.window drawViewHierarchyInRect:self.window.bounds afterScreenUpdates:true];
             UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
             UIGraphicsEndImageContext();
-            image = [image applyScreenshotEffect];
+            UIImage *effectImage = image == nil ? nil : [image applyScreenshotEffect];
+            image = effectImage != nil ? effectImage : image;
             UIImageView *imageView = [[UIImageView alloc] initWithImage:image];
             imageView.frame = CGRectMake(0.0f, 0.0f, size.width, size.height);
             imageView.contentMode = UIViewContentModeScaleToFill;
@@ -4809,7 +4810,7 @@ static unsigned int overrideIndexAbove(__unused id self, __unused SEL _cmd)
         
         _blurredContentWindow.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         _blurredContentWindow.windowLevel = 10000100.0f - 0.1f;
-        _blurredContentWindow.backgroundColor = [UIColor whiteColor];
+        _blurredContentWindow.backgroundColor = [UIColor blackColor];
         _blurredContentWindow.hidden = false;
         
     }
