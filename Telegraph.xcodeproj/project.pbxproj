@@ -3197,8 +3197,6 @@
 		D020FBDE1D9973AF00F279AA /* TGRoundImage.m in Sources */ = {isa = PBXBuildFile; fileRef = D020FBD61D9973AF00F279AA /* TGRoundImage.m */; };
 		D020FBDF1D9973AF00F279AA /* TGScaleImage.h in Headers */ = {isa = PBXBuildFile; fileRef = D020FBD71D9973AF00F279AA /* TGScaleImage.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		D020FBE01D9973AF00F279AA /* TGScaleImage.m in Sources */ = {isa = PBXBuildFile; fileRef = D020FBD81D9973AF00F279AA /* TGScaleImage.m */; };
-		D020FBE51D99782C00F279AA /* TGTColor.m in Sources */ = {isa = PBXBuildFile; fileRef = D020FBE31D99782C00F279AA /* TGTColor.m */; };
-		D020FBE61D99782C00F279AA /* TGTColor.h in Headers */ = {isa = PBXBuildFile; fileRef = D020FBE41D99782C00F279AA /* TGTColor.h */; };
 		D02344B21DEEFBD800FB7C68 /* TGDialogListCellEditingControls.h in Headers */ = {isa = PBXBuildFile; fileRef = D02344B01DEEFBD800FB7C68 /* TGDialogListCellEditingControls.h */; };
 		D02344B31DEEFBD800FB7C68 /* TGDialogListCellEditingControls.m in Sources */ = {isa = PBXBuildFile; fileRef = D02344B11DEEFBD800FB7C68 /* TGDialogListCellEditingControls.m */; };
 		D02384401D6F305A0094F9BB /* TLRPCmessages_getBotCallbackAnswer.h in Headers */ = {isa = PBXBuildFile; fileRef = D023843E1D6F305A0094F9BB /* TLRPCmessages_getBotCallbackAnswer.h */; };
@@ -9179,8 +9177,6 @@
 		D020FBD61D9973AF00F279AA /* TGRoundImage.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGRoundImage.m; sourceTree = "<group>"; };
 		D020FBD71D9973AF00F279AA /* TGScaleImage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGScaleImage.h; sourceTree = "<group>"; };
 		D020FBD81D9973AF00F279AA /* TGScaleImage.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGScaleImage.m; sourceTree = "<group>"; };
-		D020FBE31D99782C00F279AA /* TGTColor.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGTColor.m; sourceTree = "<group>"; };
-		D020FBE41D99782C00F279AA /* TGTColor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGTColor.h; sourceTree = "<group>"; };
 		D020FBE71D999B3200F279AA /* Intents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Intents.framework; path = System/Library/Frameworks/Intents.framework; sourceTree = SDKROOT; };
 		D02344B01DEEFBD800FB7C68 /* TGDialogListCellEditingControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGDialogListCellEditingControls.h; sourceTree = "<group>"; };
 		D02344B11DEEFBD800FB7C68 /* TGDialogListCellEditingControls.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGDialogListCellEditingControls.m; sourceTree = "<group>"; };
@@ -20307,8 +20303,6 @@
 		D0983C1019CB959B00CE5BB0 /* TelegraphKit */ = {
 			isa = PBXGroup;
 			children = (
-				D020FBE31D99782C00F279AA /* TGTColor.m */,
-				D020FBE41D99782C00F279AA /* TGTColor.h */,
 				D0CD11EF1CCFDB3B000DE7BC /* EMImage.h */,
 				D0CD11F01CCFDB3B000DE7BC /* EMImage.m */,
 				D0CD11F11CCFDB3B000DE7BC /* EMImageData.h */,
@@ -23072,7 +23066,6 @@
 				6887FEA91C77518B00C49B4E /* TGEmbedMenu.h in Headers */,
 				D0F904FE1C32C68A0026ECAE /* TLBotInlineResult$botInlineResult.h in Headers */,
 				D044E1701B2B18BE001EE087 /* TGEmbedPreviewView.h in Headers */,
-				D020FBE61D99782C00F279AA /* TGTColor.h in Headers */,
 				D074983C1B99FFC2005F30CC /* TLChat$channel.h in Headers */,
 				14568E2238E66EF926234E6B /* TLRPCcommunities_getJoinedCommunities.h in Headers */,
 				72F9960A770BDAC4EE8DA784 /* TLMessageAction$messageActionChangeCommunity.h in Headers */,
@@ -25754,7 +25747,6 @@
 				D07C0A961DD4DC0B00FD42A5 /* TGEmptyGalleryFooterAccessoryView.m in Sources */,
 				D011606B1F41F1310039383E /* TLRPCmessages_toggleChatAdmins.mm in Sources */,
 				68B63D831BB25B8D00205AC3 /* TGSearchPeersSignals.m in Sources */,
-				D020FBE51D99782C00F279AA /* TGTColor.m in Sources */,
 				D09A6B701C1A054600134687 /* TLMessages_BotResults$botResults.mm in Sources */,
 				D0249A3E1ABC484A0076ECBF /* TGPasswordSetupController.m in Sources */,
 				681436151C2ED44400AE480E /* TGGiphySearchResultItem+TGMediaItem.m in Sources */,

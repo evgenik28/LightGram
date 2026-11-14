@@ -128,6 +128,7 @@ $(GENERATED_DIR)/dependencies.mk: Makefile $(GRAPH_INPUTS) scripts/generate.py s
 $(GENERATED_DIR)/%.mk: $(GENERATED_DIR)/dependencies.mk
 	@test -f "$@" || python3 scripts/generate.py --configuration "$(XCODE_CONFIGURATION)"
 include $(GENERATED_DIR)/dependencies.mk
+XCODE_LIBRARIES := $(filter-out libLegacyDatabase libMtProtoKitDynamic,$(XCODE_LIBRARIES))
 XCODE_LIBRARIES += libLightGramRuntime libLightGramPlatform libLightGramUI
 ifeq ($(LIGHTGRAM_PLUGINS),1)
 XCODE_LIBRARIES += libLightGramPlugins

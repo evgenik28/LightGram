@@ -168,6 +168,6 @@ NSArray *TGGetPackedLogs();
 #define CGEven(x) ((((int)x) & 1) ? (x + 1) : x)
 #define CGOdd(x) ((((int)x) & 1) ? x : (x + 1))
 
-#import "TGTColor.h"
+#import "../../submodules/LegacyComponents/LegacyComponents/TGColor.h"
 
 #endif
