@@ -219,15 +219,7 @@
     
     CGSize iconSize = _iconView.image.size;
     
-    if (false && !_labelOnly)
-    {
-        _labelView.font = TGBoldSystemFontOfSize(8.0f);
-        [_labelView sizeToFit];
-        _labelView.textColor = [UIColor whiteColor];
-        _labelView.shadowColor = UIColorRGBA(0x000000, 0.40f);
-        _labelView.shadowOffset = CGSizeMake(0.0f, 1.0f);
-        LGPlatformApplyViewShadow(_iconView, [UIColor blackColor], 0.30f, 1.0f, CGSizeMake(0.0f, 1.0f));
-    }
+    
 
     CGSize labelSize = _labelView.bounds.size;
     CGFloat labelY = false && !_labelOnly ? 39.0f : (_labelOnly ? 17.0f : 49.0f);
@@ -239,8 +231,7 @@
     
     CGFloat offset = _triggered ? bounds.size.width - buttonWidth : 0.0f;
     _labelView.center = CGPointMake(offset + buttonWidth / 2.0f, labelY + labelSize.height / 2.0f);
-    if (false && !_labelOnly)
-        iconSize = CGSizeMake(18.0f, 18.0f);
+    
     _iconView.frame = CGRectMake(offset + CGFloor((buttonWidth - iconSize.width) / 2.0f), false && !_labelOnly ? 17.0f : 14.0f, iconSize.width, iconSize.height);
     _animationView.center = CGPointMake(offset + buttonWidth / 2.0f, bounds.size.height / 2.0f - 2.0f);
 }

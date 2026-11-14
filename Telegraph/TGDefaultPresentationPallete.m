@@ -313,8 +313,7 @@
 
 - (UIColor *)chatIncomingTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].messageTextColor;
+    
     return [UIColor blackColor];
 }
 
@@ -335,8 +334,7 @@
 
 - (UIColor *)chatIncomingDateColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return UIColorRGBA(0x525252, 0.6f);
 }
 
@@ -392,8 +390,7 @@
 
 - (UIColor *)chatOutgoingTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].messageTextColor;
+    
     return [UIColor blackColor];
 }
 
@@ -414,8 +411,7 @@
 
 - (UIColor *)chatOutgoingDateColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return UIColorRGBA(0x008c09, 0.8f);
 }
 
@@ -555,8 +551,7 @@
 
 - (UIColor *)chatChecksColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return UIColorRGB(0x23ca0a);
 }
 
@@ -577,15 +572,13 @@
 
 - (UIColor *)chatInputTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldTextColor;
+    
     return [UIColor blackColor];
 }
 
 - (UIColor *)chatInputPlaceholderColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldPlaceholderColor;
+    
     return UIColorRGB(0xbebec0);
 }
 

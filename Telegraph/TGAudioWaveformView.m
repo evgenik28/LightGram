@@ -95,61 +95,7 @@ static UIImage *TGAudioWaveformShadowedBarImage(LGTheme *theme, LGSurfaceStyle *
 }
 
 - (void)drawRect:(CGRect)__unused rect {
-    if (false) {
-        CGSize size = self.bounds.size;
-        CGContextRef context = UIGraphicsGetCurrentContext();
-        CGFloat sampleWidth = 3.0f;
-        CGFloat distance = 1.0f;
-        CGFloat baseline = MIN(11.0f, size.height);
-        int numSamples = MAX(1, (int)CGFloor((size.width + distance) / (sampleWidth + distance)));
-        CGFloat heights[numSamples];
-        memset(heights, 0, sizeof(CGFloat) * numSamples);
-
-        const uint16_t *samples = (const uint16_t *)_waveform.samples.bytes;
-        NSUInteger sampleCount = _waveform.samples.length / sizeof(uint16_t);
-        for (int i = 0; i < numSamples; i++)
-            heights[i] = TGVoiceWaveformSampleHeight(samples, sampleCount, (NSUInteger)i, (NSUInteger)numSamples, _waveform.peak);
-
-        LGTheme *theme = [LGTheme brandedTheme];
-        LGConversationAppearance *appearance = theme.conversationAppearance;
-        LGSurfaceStyle *barStyle = _foreground ? appearance.voiceWaveformPlayedBarSurfaceStyle : appearance.voiceWaveformBarSurfaceStyle;
-        for (int i = 0; i < numSamples; i++) {
-            CGFloat x = i * (sampleWidth + distance);
-            CGFloat h = MIN(baseline, heights[i]);
-            CGFloat y = baseline - h;
-            UIImage *barImage = TGAudioWaveformShadowedBarImage(theme, barStyle, CGSizeMake(sampleWidth, h));
-            [barImage drawAtPoint:CGPointMake(x - TGAudioWaveformBarShadowPadding, y - TGAudioWaveformBarShadowPadding)];
-        }
-
-        LGSurfaceStyle *reflectionStyle = appearance.voiceWaveformPlayedBarSurfaceStyle;
-        CGContextSaveGState(context);
-        CGContextBeginTransparencyLayer(context, NULL);
-        CGContextSaveGState(context);
-        CGContextTranslateCTM(context, 0.0f, baseline * 2.0f);
-        CGContextScaleCTM(context, 1.0f, -1.0f);
-        for (int i = 0; i < numSamples; i++) {
-            CGFloat x = i * (sampleWidth + distance);
-            CGFloat h = MIN(baseline, heights[i]);
-            CGSize barSize = CGSizeMake(sampleWidth, h);
-            UIImage *barImage = [theme.surfaceRenderer imageWithStyle:reflectionStyle size:barSize bodyFrame:CGRectMake(0.0f, 0.0f, barSize.width, barSize.height)];
-            [barImage drawAtPoint:CGPointMake(x, baseline - h)];
-        }
-        CGContextRestoreGState(context);
-        CGContextSetBlendMode(context, kCGBlendModeDestinationIn);
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-        CGFloat components[] = {
-            1.0f, 1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f, 0.0f
-        };
-        CGFloat locations[] = {0.0f, 0.8278f};
-        CGGradientRef gradient = CGGradientCreateWithColorComponents(colorSpace, components, locations, 2);
-        CGContextDrawLinearGradient(context, gradient, CGPointMake(0.0f, baseline), CGPointMake(0.0f, MIN(size.height, baseline + 13.0f)), 0);
-        CGGradientRelease(gradient);
-        CGColorSpaceRelease(colorSpace);
-        CGContextEndTransparencyLayer(context);
-        CGContextRestoreGState(context);
-        return;
-    }
+    
 
     CGFloat sampleWidth = 2.0f;
     CGFloat halfSampleWidth = 1.0f;

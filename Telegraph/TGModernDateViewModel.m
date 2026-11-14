@@ -28,23 +28,14 @@ static CTFontRef TGModernDateViewModelCreateFont(UIFont *font)
 
 + (CTFontRef)dateFont
 {
-    if (false)
-    {
-        static CTFontRef brandedDateFont = NULL;
-        static dispatch_once_t onceToken;
-        dispatch_once(&onceToken, ^
-        {
-            brandedDateFont = TGModernDateViewModelCreateFont([TGPresentation brandedIOS6ConversationAppearance].timeFont);
-        });
-        return brandedDateFont;
-    }
+    
 
     return [self dateFontWithBaseSize:12.0f];
 }
 
 + (CTFontRef)inlineDateFont
 {
-    return false ? [self dateFont] : [self dateFontWithBaseSize:11.0f];
+    return [self dateFontWithBaseSize:11.0f];
 }
 
 + (CTFontRef)dateFontWithBaseSize:(CGFloat)baseSize

@@ -44,8 +44,7 @@
             _userInfoItem
         ]];
         UIEdgeInsets infoSectionInsets = infoSection.insets;
-        if (false)
-            infoSectionInsets.top = [LGTheme brandedTheme].profileAppearance.infoSectionTopInset;
+        
         infoSectionInsets.bottom = 0.0f;
         infoSection.insets = infoSectionInsets;
         [self.menuSections addSection:infoSection];

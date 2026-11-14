@@ -63,8 +63,7 @@ static TGBrandedIOS6ActionIcon TGModernConversationActionInputPanelBrandedIcon(T
 
 - (CGFloat)baseHeight
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].actionPanelHeight;
+    
     
     return UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone ? 45.0f : 56.0f;
 }

@@ -555,8 +555,7 @@ static TGMessage *TGLightGramPreviewMessage(int32_t mid, int32_t fromUid, bool o
             strongSelf->_stickerPreviewItem.stickerScale = (CGFloat)value / 100.0f;
     };
     [stickerItems addObject:stickerItem];
-    if (!false)
-        [stickerItems addObject:[self switchWithTitle:TGLocalized(@"LightGramSettings.HideStickerTime") key:TGLightGramSettingMessagesHideStickerTime description:TGLocalized(@"LightGramSettings.HideStickerTimeInfo")]];
+    [stickerItems addObject:[self switchWithTitle:TGLocalized(@"LightGramSettings.HideStickerTime") key:TGLightGramSettingMessagesHideStickerTime description:TGLocalized(@"LightGramSettings.HideStickerTimeInfo")]];
     [stickerItems addObject:[self switchWithTitle:TGLocalized(@"LightGramSettings.AnimatedStickers") key:TGLightGramSettingMessagesAnimatedStickers description:TGLocalized(@"LightGramSettings.AnimatedStickersInfo")]];
     [stickerItems addObject:[self switchWithTitle:TGLocalized(@"LightGramSettings.AnimatedEmoji") key:TGLightGramSettingMessagesAnimatedEmoji description:TGLocalized(@"LightGramSettings.AnimatedEmojiInfo")]];
 

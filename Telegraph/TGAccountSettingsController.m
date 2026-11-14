@@ -931,8 +931,7 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
 
 - (UIColor *)collectionMenuBackgroundColor
 {
-    if (false && [LGTheme brandedTheme].settingsAppearance.screenBackgroundSurfaceStyle == nil)
-        return UIColorRGB(0xdbe2ed);
+    
     return [super collectionMenuBackgroundColor];
 }
 
@@ -1006,13 +1005,6 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
     _proxyItem = [[TGVariantCollectionItem alloc] initWithTitle:TGLocalized(@"Settings.Proxy") action:@selector(proxyPressed)];
     _proxySection = [[TGCollectionMenuSection alloc] initWithItems:@[_proxyItem]];
 
-    if (false)
-    {
-        _logsSection = [[TGCollectionMenuSection alloc] initWithItems:@[_logsItem, _lightgramSettingsItem, _switchAccountItem]];
-        _logsSection.insets = UIEdgeInsetsMake(0.0f, 4.0f, 15.0f, 5.0f);
-        [self.menuSections addSection:_logsSection];
-    }
-    else
     {
         _logsSection = [[TGCollectionMenuSection alloc] initWithItems:@[_logsItem, _switchAccountItem]];
         [self.menuSections addSection:_logsSection];
@@ -1038,8 +1030,7 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
 
     [shortcutItems addObjectsFromArray:settingsItems];
     _shortcutSection = [[TGCollectionMenuSection alloc] initWithItems:shortcutItems];
-    if (false)
-        _shortcutSection.insets = UIEdgeInsetsMake(0.0f, 3.0f, 16.0f, 6.0f);
+    
     [self.menuSections addSection:_shortcutSection];
     
     _accountItem = [[TGDisclosureActionCollectionItem alloc] initWithTitle:TGLocalized(@"LightGramSettings.Account") action:@selector(editButtonPressed)];
@@ -1065,21 +1056,19 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
     _otherSection.insets = UIEdgeInsetsZero;
     [self.menuSections addSection:_otherSection];
 
-    if (false)
-        _headerSection.insets = UIEdgeInsetsMake(0.0f, 0.0f, 15.0f, 0.0f);
+    
     _classicHeaderSectionInsets = _headerSection.insets;
 
     NSDictionary *bundleInfo = [[NSBundle mainBundle] infoDictionary];
     NSString *version = [bundleInfo objectForKey:@"CFBundleShortVersionString"];
     NSString *build = [bundleInfo objectForKey:@"CFBundleVersion"];
-    NSString *versionText = false ? [NSString stringWithFormat:@"LightGram %@v concept by FEKLA DAVICHI", version ?: @""] : [NSString stringWithFormat:@"LightGram %@v build %@", version ?: @"", build ?: @""];
+    NSString *versionText = [NSString stringWithFormat:@"LightGram %@v build %@", version ?: @"", build ?: @""];
     _versionItem = [[TGVersionCollectionItem alloc] initWithVersion:versionText];
 
     TGCollectionMenuSection *infoSection = [[TGCollectionMenuSection alloc] initWithItems:@[
         _versionItem
     ]];
-    if (false)
-        infoSection.insets = UIEdgeInsetsMake(0.0f, 3.0f, 15.0f, 6.0f);
+    
     [self.menuSections addSection:infoSection];
     _infoSection = infoSection;
     _classicSections = [self.menuSections.sections copy];
@@ -1118,11 +1107,7 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
         NSArray *list = next.firstObject;
         bool alwaysShowProxy = [next.lastObject boolValue];
 
-        if (false)
-        {
-            [strongSelf setupProxyStatus];
-            return;
-        }
+        
 
         bool proxyVisible = list.count != 0 || alwaysShowProxy;
         bool proxyWasVisible = strongSelf->_proxyVisible;
@@ -1191,8 +1176,7 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
     [self prepareInitialContentIfNeeded];
     [super loadView];
 
-    if (false)
-        self.collectionView.showsVerticalScrollIndicator = false;
+    
    
     _logsItem.icon = TGImageNamed(@"SettingsDataIcon.png");
     _proxyItem.icon = TGImageNamed(@"SettingsProxyIcon.png");
@@ -1212,34 +1196,7 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
     if (_callSettingsItem != nil)
         _callSettingsItem.icon = TGImageNamed(@"SettingsCallsIcon.png");
 
-    if (false)
-    {
-        _logsItem.brandedSettingsStyle = true;
-        _logsItem.brandedSettingsIconName = @"SettingsFeklaLogs";
-        _proxyItem.brandedSettingsStyle = true;
-        _proxyItem.brandedSettingsIconName = @"SettingsFeklaProxy";
-        _lightgramSettingsItem.brandedSettingsStyle = true;
-        _lightgramSettingsItem.brandedSettingsIconName = @"SettingsFeklaLightGramSettings";
-        _switchAccountItem.brandedSettingsStyle = true;
-        _switchAccountItem.brandedSettingsIconName = @"SettingsFeklaAccounts";
-        _savedMessagesItem.brandedSettingsStyle = true;
-        _savedMessagesItem.brandedSettingsIconName = @"SettingsFeklaFavourites";
-        _stickerSettingsItem.brandedSettingsStyle = true;
-        _stickerSettingsItem.brandedSettingsIconName = @"SettingsFeklaStickers";
-        _notificationsItem.brandedSettingsStyle = true;
-        _notificationsItem.brandedSettingsIconName = @"SettingsFeklaNotifications";
-        _privacySettingsItem.brandedSettingsStyle = true;
-        _privacySettingsItem.brandedSettingsIconName = @"SettingsFeklaPrivacy";
-        _chatSettingsItem.brandedSettingsStyle = true;
-        _chatSettingsItem.brandedSettingsIconName = @"SettingsFeklaDataMemory";
-        _dialogFiltersItem.brandedSettingsStyle = true;
-        _devicesItem.brandedSettingsStyle = true;
-        _devicesItem.brandedSettingsIconName = @"SettingsFeklaDevices";
-        _wallpapersItem.brandedSettingsStyle = true;
-        _wallpapersItem.brandedSettingsIconName = @"SettingsFeklaDecoration";
-        _languageItem.brandedSettingsStyle = true;
-        _languageItem.brandedSettingsIconName = @"SettingsFeklaLanguage";
-    }
+    
     
     _editing = false;
     
@@ -1496,12 +1453,12 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
 - (void)restoreClassicSections
 {
     NSMutableArray *sections = [[NSMutableArray alloc] initWithArray:_classicSections];
-    if (_proxyVisible && !false)
+    if (_proxyVisible)
     {
         NSUInteger logsSectionIndex = [sections indexOfObject:_logsSection];
         [sections insertObject:_proxySection atIndex:logsSectionIndex == NSNotFound ? MIN((NSUInteger)2, sections.count) : logsSectionIndex + 1];
     }
-    if (_profileMusicDocument != nil && !false && [_headerSection indexOfItem:_profileMusicItem] == NSNotFound)
+    if (_profileMusicDocument != nil && [_headerSection indexOfItem:_profileMusicItem] == NSNotFound)
         [_headerSection insertItem:_profileMusicItem atIndex:MIN((NSUInteger)1, _headerSection.items.count)];
     if (_callSettingsItem != nil && [_shortcutSection indexOfItem:_callSettingsItem] == NSNotFound)
         [_shortcutSection insertItem:_callSettingsItem atIndex:MIN((NSUInteger)1, _shortcutSection.items.count)];
@@ -1978,22 +1935,7 @@ static NSString *TGIOS6SettingsProfileMusicTitle(TGDocumentMediaAttachment *docu
 
     NSUInteger itemIndex = [_headerSection.items indexOfObject:_profileMusicItem];
 
-    if (false)
-    {
-        _profileDataItem.profileMusicDocument = document;
-        if (itemIndex != NSNotFound)
-        {
-            [self.menuSections beginRecordingChanges];
-            [self.menuSections deleteItemFromSection:sectionIndex atIndex:itemIndex];
-            [self.menuSections commitRecordedChanges:self.collectionView];
-        }
-        if (hadMusic != hasMusic || changed)
-        {
-            [self.collectionLayout invalidateLayout];
-            [self.collectionView layoutSubviews];
-        }
-        return;
-    }
+    
 
     _profileDataItem.profileMusicDocument = nil;
 

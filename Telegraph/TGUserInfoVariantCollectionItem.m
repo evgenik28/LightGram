@@ -44,7 +44,7 @@
 
 - (CGSize)itemSizeForContainerSize:(CGSize)containerSize
 {
-    return CGSizeMake(containerSize.width, false ? [LGTheme brandedTheme].profileAppearance.actionRowAppearance.rowHeight : 44.0f);
+    return CGSizeMake(containerSize.width, 44.0f);
 }
 
 - (void)itemSelected:(id)actionTarget

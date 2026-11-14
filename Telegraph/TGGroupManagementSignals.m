@@ -603,9 +603,7 @@ static SSignal *OGPeerDialogsDatabaseSignal(const char *file, int line, id (^blo
         getPeerDialogs.peers = inputDialogPeers;
         
         SSignal *maybeAppliedReadStates = [[[TGTelegramNetworking instance] requestSignal:getPeerDialogs] mapToSignal:^SSignal *(TLmessages_PeerDialogs *result) {
-            if (false && result.state.pts != [nInitialPts intValue]) {
-                return [SSignal fail:@true];
-            } else {
+            {
                 NSMutableDictionary *readStates = [[NSMutableDictionary alloc] init];
                 NSMutableDictionary *mentionStatesByPeer = [[NSMutableDictionary alloc] init];
                 

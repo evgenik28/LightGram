@@ -252,7 +252,7 @@ private:
 
 static CGFloat TGDialogListSearchBarHeight(void)
 {
-    return false ? [TGPresentation brandedIOS6DialogListAppearance].searchBarHeight : [TGSearchBar searchBarBaseHeight];
+    return [TGSearchBar searchBarBaseHeight];
 }
 
 static dispatch_queue_t TGDialogListRenderPreheatQueue(void)
@@ -317,8 +317,7 @@ static bool TGDialogListSingleCoreDevice(void)
 
 static NSString *TGDialogListBrandedStatusText(TGConversation *conversation)
 {
-    if (!false || conversation == nil)
-        return nil;
+    return nil;
     if (conversation.conversationId == TGTelegraphInstance.clientUserId)
         return nil;
     if (conversation.isChannel || TGPeerIdIsChannel(conversation.conversationId))
@@ -438,31 +437,26 @@ static bool OGCompatDialogListClassicDarkStyle(TGPresentation *presentation)
 
 static UIColor *OGDialogListHeaderTitleColor(TGPresentation *presentation)
 {
-    if (false)
-        return [TGPresentation brandedIOS6NavigationTitleColor];
-    if (false)
-        return [UIColor whiteColor];
+    
+    
     return presentation.pallete.navigationTitleColor;
 }
 
 static UIFont *TGDialogListNavigationTitleFont(void)
 {
-    return false ? [TGPresentation brandedIOS6NavigationTitleFont] : TGBoldSystemFontOfSize(17.0f);
+    return TGBoldSystemFontOfSize(17.0f);
 }
 
 static UIColor *OGDialogListHeaderSubtitleColor(TGPresentation *presentation)
 {
-    if (!false)
-        return presentation.pallete.navigationSubtitleColor;
+    return presentation.pallete.navigationSubtitleColor;
     return presentation.pallete.isDark ? presentation.pallete.navigationSubtitleColor : UIColorRGB(0xdbe6ee);
 }
 
 static UIColor *TGDialogListNavigationShadowColor(TGPresentation *presentation, CGFloat alpha)
 {
-    if (!false)
-        return [UIColor clearColor];
-    if (false)
-        return [TGPresentation brandedIOS6NavigationTitleShadowColor];
+    return [UIColor clearColor];
+    
     return OGCompatDialogListClassicDarkStyle(presentation) ? UIColorRGBA(0x000000, alpha) : UIColorRGBA(0x1f3446, alpha);
 }
 #import "TGPreviewPresentationHelper.h"
@@ -1338,7 +1332,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
 - (CGFloat)dialogListConversationRowHeight
 {
-    return false ? [TGPresentation brandedIOS6DialogListAppearance].rowHeight : 76.0f;
+    return 76.0f;
 }
 
 - (void)applyConversationTableSeparators:(UITableView *)tableView
@@ -1516,10 +1510,8 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     if ([TGLightGramSettings boolForKey:TGLightGramSettingGeneralHideArchive] && !_ogArchiveExpanded)
         return nil;
 
-    if (false)
-        return TGDialogListBrandedBarButtonItem(_ogArchiveExpanded ? @"Chats" : @"Archive", self, @selector(archiveButtonPressed:), true);
-    if (false)
-        return [[UIBarButtonItem alloc] initWithTitle:(_ogArchiveExpanded ? @"Chats" : @"Archive") style:UIBarButtonItemStyleBordered target:self action:@selector(archiveButtonPressed:)];
+    
+    
 
     UIColor *tint = self.presentation.pallete.navigationButtonColor;
     UIButton *toggle = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -1671,20 +1663,13 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
 - (NSArray *)controllerRightBarButtonItems
 {
-    if (false)
-        return @[ TGDialogListBrandedBarButtonItem(_editingMode ? @"Done" : @"Edit", self, _editingMode ? @selector(doneButtonPressed) : @selector(editButtonPressed), false) ];
+    
     if (_editingMode)
         return nil;
     
     NSMutableArray *items = [[NSMutableArray alloc] init];
     UIBarButtonItem *compose = nil;
-    if (false)
-    {
-        UIImage *composeGlyph = TGTintedImage([UIImage imageNamed:@"ModernNavigationComposeButtonIcon.png"], [UIColor whiteColor]);
-        composeGlyph = OGCompatCenteredScaledBarIcon(composeGlyph, 0.70f);
-        compose = [[UIBarButtonItem alloc] initWithImage:composeGlyph style:UIBarButtonItemStyleBordered target:self action:@selector(composeMessageButtonPressed:)];
-    }
-    else if (iosMajorVersion() < 7)
+    if (iosMajorVersion() < 7)
     {
         TGModernBarButton *composeControl = [[TGModernBarButton alloc] initWithImage:TGTintedImage([UIImage imageNamed:@"ModernNavigationComposeButtonIcon.png"], self.presentation.pallete.navigationButtonColor)];
         composeControl.portraitAdjustment = CGPointMake(-7, -5);
@@ -1731,12 +1716,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
         landscapeOffset = 1.0f;
         indicatorOffset = 0.0f;
     }
-    if (false)
-    {
-        CGFloat brandedTitleOffset = [TGPresentation brandedIOS6DialogListAppearance].navigationTitleVerticalOffset;
-        portraitOffset += brandedTitleOffset;
-        landscapeOffset += brandedTitleOffset;
-    }
+    
     
     CGRect titleLabelFrame = _titleLabel.frame;
     titleLabelFrame.origin = CGPointMake(CGFloor((_titleContainer.frame.size.width - titleLabelFrame.size.width) / 2.0f), CGFloor((_titleContainer.frame.size.height - titleLabelFrame.size.height) / 2.0f) + (UIInterfaceOrientationIsPortrait(orientation) ? portraitOffset : landscapeOffset));
@@ -1878,8 +1858,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
         _searchBar.pallete = self.presentation.searchBarPallete;
         _searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         _searchBar.safeAreaInset = [self controllerSafeAreaInset];
-        if (false)
-            _searchBar.textFieldInsets = [TGPresentation brandedIOS6DialogListAppearance].searchFieldInsets;
+        
         
         _searchTopBackgroundView = [[UIView alloc] initWithFrame:CGRectMake(0.0f, -320.0f, self.view.frame.size.width, 320.0f)];
         _searchTopBackgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -1947,13 +1926,13 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     [_ogFolderTabsView addSubview:_ogFolderTabsScrollView];
 
     _ogFolderTabsSeparatorView = [[UIView alloc] initWithFrame:CGRectZero];
-    _ogFolderTabsSeparatorView.backgroundColor = false ? [TGPresentation brandedIOS6DialogListAppearance].folderTabsSeparatorColor : (false ? (OGCompatDialogListClassicDarkStyle(self.presentation) ? self.presentation.pallete.barSeparatorColor : UIColorRGB(0xc8c8c8)) : self.presentation.pallete.separatorColor);
+    _ogFolderTabsSeparatorView.backgroundColor = (self.presentation.pallete.separatorColor);
     [_ogFolderTabsView addSubview:_ogFolderTabsSeparatorView];
 
     _ogFolderEmptyLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _ogFolderEmptyLabel.backgroundColor = [UIColor clearColor];
     _ogFolderEmptyLabel.textAlignment = NSTextAlignmentCenter;
-    _ogFolderEmptyLabel.textColor = false ? [TGPresentation brandedIOS6DialogListAppearance].folderEmptyColor : (false ? (OGCompatDialogListClassicDarkStyle(self.presentation) ? self.presentation.pallete.secondaryTextColor : UIColorRGB(0x8e8e93)) : self.presentation.pallete.secondaryTextColor);
+    _ogFolderEmptyLabel.textColor = (self.presentation.pallete.secondaryTextColor);
     _ogFolderEmptyLabel.font = TGSystemFontOfSize(15.0f);
     _ogFolderEmptyLabel.text = @"Нет чатов";
     _ogFolderEmptyLabel.hidden = true;
@@ -2174,12 +2153,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     [self dialogListFlushOffscreenReload];
     _snowflakesOnScreen = true;
     [self updateSnowflakesAnimated:animated];
-    if (false && [self.navigationController.navigationBar isKindOfClass:[TGNavigationBar class]])
-    {
-        TGNavigationBar *navigationBar = (TGNavigationBar *)self.navigationController.navigationBar;
-        navigationBar.musicPlayerLayout = TGNavigationBarMusicPlayerLayoutStandard;
-        navigationBar.musicPlayerHostView = _ogPlayerHostView;
-    }
+    
     [self og_layoutFolderTabs];
     [self refreshOwnUserIfStale];
     [self loadCachedOwnEmojiStatus];
@@ -2446,7 +2420,6 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
 - (void)setAdditionalNavigationBarHeight:(CGFloat)height
 {
-    if (!false)
     {
         [super setAdditionalNavigationBarHeight:height];
         return;
@@ -3164,7 +3137,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
         TGConversation *firstDialog = displayedRows[0];
         firstRowPinned = firstDialog.pinnedToTop || firstDialog.isAd || (_dialogListCompanion.forwardMode && firstDialog.conversationId == TGTelegraphInstance.clientUserId);
     }
-    UIColor *backgroundColor = false ? [TGPresentation brandedIOS6SearchBarBackdropColorForSize:_searchBar.bounds.size] : (firstRowPinned ? _presentation.pallete.barBackgroundColor : _presentation.pallete.backgroundColor);
+    UIColor *backgroundColor = (firstRowPinned ? _presentation.pallete.barBackgroundColor : _presentation.pallete.backgroundColor);
     if (!TGObjectCompare(_searchBar.backgroundColor, backgroundColor)) {
         _searchBar.backgroundColor = backgroundColor;
         _searchTopBackgroundView.backgroundColor = backgroundColor;
@@ -3346,7 +3319,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
 - (void)updateBarButtonItemsAnimated:(bool)animated
 {
-    NSUInteger state = (false ? 1u : 0u) | (false ? 2u : 0u) | (_editingMode ? 4u : 0u) | (_ogArchiveExpanded ? 8u : 0u) | (_ogSelectedDialogFilterId != 0 ? 16u : 0u);
+    NSUInteger state = (0u) | (0u) | (_editingMode ? 4u : 0u) | (_ogArchiveExpanded ? 8u : 0u) | (_ogSelectedDialogFilterId != 0 ? 16u : 0u);
     TGPresentationPallete *pallete = self.presentation.pallete;
     if (_barButtonItemsApplied && _barButtonItemsState == state && _barButtonItemsPallete == pallete)
     {
@@ -3705,7 +3678,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     }
     else
         [navigationBar bringSubviewToFront:_snowflakesView];
-    _snowflakesView.color = false ? [TGPresentation brandedIOS6NavigationTitleColor] : _presentation.pallete.navigationTitleColor;
+    _snowflakesView.color = _presentation.pallete.navigationTitleColor;
     [_snowflakesView setActive:true animated:animated];
 }
 
@@ -3841,12 +3814,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     CGFloat top = CGRectGetMinY(tableRect);
     if (!CGRectIsEmpty(tabsRect))
         top = MAX(top, CGRectGetMaxY(tabsRect));
-    if (false && _ogPlayerHeight > FLT_EPSILON && _ogListHeaderView.superview != nil)
-    {
-        CGRect playerRect = CGRectIntersection([_ogPlayerHostView convertRect:_ogPlayerHostView.bounds toView:self.view], self.view.bounds);
-        if (!CGRectIsEmpty(playerRect))
-            top = MAX(top, CGRectGetMaxY(playerRect));
-    }
+    
 
     CGRect rect = CGRectMake(CGRectGetMinX(tableRect), top, CGRectGetWidth(tableRect), CGRectGetMaxY(tableRect) - top);
     return CGRectIntersection(rect, self.view.bounds);
@@ -3874,7 +3842,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
 - (CGFloat)og_folderTabsOffsetRevealingButton:(UIButton *)button fromOffset:(CGFloat)offset
 {
-    CGFloat inset = false ? 13.0f : 16.0f;
+    CGFloat inset = 16.0f;
     CGRect rect = CGRectInset(button.frame, -inset, 0.0f);
     CGFloat visibleWidth = _ogFolderTabsScrollView.bounds.size.width;
     if (CGRectGetMinX(rect) < offset)
@@ -4318,7 +4286,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 {
     if (![self og_foldersAllowed] || _isDisplayingSearch || _ogArchiveExpanded || _ogDialogFilters.count <= 1)
         return 0.0f;
-    return false ? [TGPresentation brandedIOS6DialogListAppearance].folderTabsHeight : 38.0f;
+    return 38.0f;
 }
 
 - (int64_t)og_peerIdForInputPeer:(id)peer
@@ -6371,10 +6339,8 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
 - (UIColor *)og_folderTabsBackgroundColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6DialogListHeaderColorForSize:_ogFolderTabsView.bounds.size];
-    if (false)
-        return OGCompatDialogListClassicDarkStyle(self.presentation) ? self.presentation.pallete.backgroundColor : UIColorRGB(0xf7f7f7);
+    
+    
     return self.presentation.pallete.backgroundColor;
 }
 
@@ -6385,19 +6351,14 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
     CGFloat height = [self og_folderTabsHeight];
     CGFloat width = _tableView.bounds.size.width;
-    CGFloat playerHeight = false ? _ogPlayerHeight : 0.0f;
+    CGFloat playerHeight = 0.0f;
     CGRect headerFrame = _ogListHeaderView.frame;
     headerFrame.size = CGSizeMake(width, height + playerHeight);
     _ogListHeaderView.frame = headerFrame;
     if (_ogFolderTabsView.superview != _ogListHeaderView)
         [_ogListHeaderView addSubview:_ogFolderTabsView];
     _ogPlayerHostView.frame = CGRectMake(0.0f, height, width, playerHeight);
-    if (false)
-    {
-        TGNavigationBar *navigationBar = [self.navigationController.navigationBar isKindOfClass:[TGNavigationBar class]] ? (TGNavigationBar *)self.navigationController.navigationBar : nil;
-        if (navigationBar.musicPlayerHostView == _ogPlayerHostView)
-            navigationBar.musicPlayerHostView = _ogPlayerHostView;
-    }
+    
     _ogFolderTabsView.hidden = height < FLT_EPSILON;
     _ogFolderTabsView.frame = CGRectMake(0.0f, 0.0f, width, height);
     _ogFolderTabsView.backgroundColor = [self og_folderTabsBackgroundColor];
@@ -6518,7 +6479,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     if (tableView == _tableView)
     {
         if (indexPath.section == 0)
-            return false ? 49.0f : 45.0f;
+            return 45.0f;
         
         id item = [self og_dialogListItemAtIndexPath:indexPath];
         if ([self og_isArchiveHeaderItem:item])
@@ -8057,8 +8018,8 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 
 - (NSString *)dialogListAvatarFilter
 {
-    CGFloat avatarSize = false ? 50.0f : (false ? 52.0f : 62.0f);
-    return false ? [NSString stringWithFormat:@"scale:%dx%d", (int)avatarSize, (int)avatarSize] : [NSString stringWithFormat:@"circle:%dx%d", (int)avatarSize, (int)avatarSize];
+    CGFloat avatarSize = (62.0f);
+    return [NSString stringWithFormat:@"circle:%dx%d", (int)avatarSize, (int)avatarSize];
 }
 
 - (void)og_scheduleCompleteDialogHydrationAndAvatarPrefetch
@@ -9357,7 +9318,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     if (tableView == _tableView)
     {
         CGFloat folderTabsHeight = [self og_folderTabsHeight];
-        CGFloat playerHeight = false ? _ogPlayerHeight : 0.0f;
+        CGFloat playerHeight = 0.0f;
 #if LG_PLUGINS_AVAILABLE
         if (section == 1)
         {
@@ -9483,9 +9444,9 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
 {
     if (tableView == _tableView)
 #if LG_PLUGINS_AVAILABLE
-        return section == 1 ? [self og_folderTabsHeight] + (false ? _ogPlayerHeight : 0.0f) + OGPluginUIChatListSurfacesSectionHeight(self) : 0.0f;
+        return section == 1 ? [self og_folderTabsHeight] + (0.0f) + OGPluginUIChatListSurfacesSectionHeight(self) : 0.0f;
 #else
-        return section == 1 ? [self og_folderTabsHeight] + (false ? _ogPlayerHeight : 0.0f) : 0.0f;
+        return section == 1 ? [self og_folderTabsHeight] + (0.0f) : 0.0f;
 #endif
     
     if (((NSString *)_searchResultsSections[section][@"title"]).length == 0 || [(NSArray *)_searchResultsSections[section][@"items"] count] == 0)
@@ -10417,7 +10378,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
     _needsUpdate = true;
     _ogFolderTabsStateKey = nil;
     TGNavigationBar *navigationBar = [self.navigationController.navigationBar isKindOfClass:[TGNavigationBar class]] ? (TGNavigationBar *)self.navigationController.navigationBar : nil;
-    if (!false && _ogPlayerHeight > FLT_EPSILON)
+    if (_ogPlayerHeight > FLT_EPSILON)
     {
         CGFloat height = _ogPlayerHeight;
         _ogPlayerHeight = 0.0f;
@@ -10425,12 +10386,7 @@ static const CGFloat TGDialogListArchiveHeaderHeight = 54.0f;
             navigationBar.musicPlayerHostView = nil;
         [super setAdditionalNavigationBarHeight:height > 2.0f ? 37.0f : height];
     }
-    else if (false && self.additionalNavigationBarHeight > FLT_EPSILON)
-    {
-        [self setAdditionalNavigationBarHeight:self.additionalNavigationBarHeight > 2.0f ? 44.0f : self.additionalNavigationBarHeight];
-        if (_isOnScreen)
-            navigationBar.musicPlayerHostView = _ogPlayerHostView;
-    }
+    
 
     if (self.isViewLoaded)
         self.view.backgroundColor = _presentation.pallete.backgroundColor;

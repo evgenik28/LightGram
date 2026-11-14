@@ -58,19 +58,7 @@ static NSString *const TGTextMessageModernViewModelSpoilersKey = @"spoilers";
 
 static CTFontRef textFontForSize(CGFloat size)
 {
-    if (false)
-    {
-        static CTFontRef brandedFont = NULL;
-        static int brandedSize = 0;
-        if (brandedFont == NULL || (int)size != brandedSize)
-        {
-            if (brandedFont != NULL)
-                CFRelease(brandedFont);
-            brandedFont = OGCompatCreateCTFont([[TGPresentation brandedIOS6ConversationAppearance].messageFont fontWithSize:size]);
-            brandedSize = (int)size;
-        }
-        return brandedFont;
-    }
+    
 
     static CTFontRef font = NULL;
     static int cachedSize = 0;
@@ -110,12 +98,7 @@ static CTFontRef textFontForSize(CGFloat size)
         _textModel.textCheckingResults = _isGame ? nil : textCheckingResults;
         _textModel.textColor = _incomingAppearance ? _context.presentation.pallete.chatIncomingTextColor : _context.presentation.pallete.chatOutgoingTextColor;
         _textModel.linkColor = _incomingAppearance ? _context.presentation.pallete.chatIncomingLinkColor : _context.presentation.pallete.chatOutgoingLinkColor;
-        if (false)
-        {
-            LGConversationAppearance *appearance = [TGPresentation brandedIOS6ConversationAppearance];
-            _textModel.shadowColor = appearance.messageShadowColor;
-            _textModel.shadowOffset = appearance.messageShadowOffset;
-        }
+        
         if (message.isBroadcast)
             _textModel.additionalTrailingWidth += 10.0f;
         _customEmojiEntities = hasGame ? nil : TGCustomEmojiEntities(message.entities);
@@ -936,7 +919,7 @@ static CTFontRef textFontForSize(CGFloat size)
     if (!_spoilersRevealed)
         layoutFlags |= TGReusableLabelLayoutCoverSpoilers;
     
-    CGFloat effectiveInfoWidth = false ? 0.0f : infoWidth;
+    CGFloat effectiveInfoWidth = infoWidth;
     if (_emojiOnly) {
         effectiveInfoWidth = 0.0f;
     }
@@ -959,8 +942,7 @@ static CTFontRef textFontForSize(CGFloat size)
     }
     
     size.width = MAX(size.width, infoWidth - ((false || [self usesInlineMessageLayout]) ? 5.0f : 0.0f));
-    if (false && ![self reactionsShareTimeRow] && !_isGame && !_isInvoice && !(_text.length == 0 && _webPage != nil))
-        size.height += [TGPresentation brandedIOS6ConversationAppearance].bubbleTimeRowHeight;
+    
     
     if (_isGame || _isInvoice || (_text.length == 0 && _webPage != nil)) {
         size.height = 0.0f;

@@ -176,7 +176,7 @@
         
         [self.menuSections addSection:_groupInfoSection];
 
-        if ([TGLightGramSettings boolForKey:TGLightGramSettingGeneralShowPeerIds] && !false)
+        if ([TGLightGramSettings boolForKey:TGLightGramSettingGeneralShowPeerIds])
         {
             TGCollectionMenuSection *identitySection = [[TGCollectionMenuSection alloc] initWithItems:TGLightGramPeerIdentityItems(_conversationId, nil)];
             identitySection.insets = UIEdgeInsetsMake(0.0f, 0.0f, 22.0f, 0.0f);

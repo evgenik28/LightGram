@@ -272,14 +272,14 @@ static void TGConfigureRecentCallsSegmentedControl(UISegmentedControl *segmented
     TGConfigureRecentCallsSegmentedControl(_segmentedControl, _presentation);
     
     CGFloat width = 0.0f;
-    UIFont *segmentedFont = false ? TGBoldSystemFontOfSize(13.0f) : TGSystemFontOfSize(13.0f);
+    UIFont *segmentedFont = TGSystemFontOfSize(13.0f);
     for (NSString *itemName in items)
     {
         CGSize size = [itemName sizeWithFont:segmentedFont];
         if (size.width > width)
             width = size.width;
     }
-    width = false ? 141.0f : (width + 34.0f) * 2.0f;
+    width = (width + 34.0f) * 2.0f;
     
     _segmentedControl.frame = CGRectMake((self.view.frame.size.width - width) / 2.0f, 8.0f, width, 29.0f);
     _segmentedControl.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin;
@@ -316,7 +316,7 @@ static void TGConfigureRecentCallsSegmentedControl(UISegmentedControl *segmented
 
     _tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     
-    if (iosMajorVersion() >= 7 && !false) {
+    if (iosMajorVersion() >= 7) {
         _tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
         _tableView.separatorColor = _presentation.pallete.separatorColor;
 #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 70000
@@ -521,15 +521,13 @@ static void TGConfigureRecentCallsSegmentedControl(UISegmentedControl *segmented
 
 - (UIBarButtonItem *)controllerLeftBarButtonItem
 {
-    if (false && !_inSettings)
-        return nil;
+    
     return _inSettings ? [self actionBarButtonItem] : [self editBarButtonItem];
 }
 
 - (UIBarButtonItem *)controllerRightBarButtonItem
 {
-    if (false && !_inSettings)
-        return [self editBarButtonItem];
+    
     if (_inSettings)
         return [self editBarButtonItem];
     else if (_editingMode)
@@ -673,7 +671,7 @@ static void TGConfigureRecentCallsSegmentedControl(UISegmentedControl *segmented
 
 - (CGFloat)tableView:(UITableView *)__unused tableView heightForRowAtIndexPath:(NSIndexPath *)__unused indexPath
 {
-    return false ? 60.0f : 56.0f;
+    return 56.0f;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath

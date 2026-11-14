@@ -117,8 +117,7 @@ static UIImage *TGBrandedMediaButtonImage(CGFloat diameter, bool paused)
 
 - (void)updateBrandedMediaButton
 {
-    if (!false)
-        return;
+    return;
 
     if (_brandedMediaButtonView == nil)
     {
@@ -194,9 +193,9 @@ static UIImage *highlightImageForDiameter(CGFloat diameter) {
 {
     _presentation = presentation;
     _overlayView.incomingColor = presentation.pallete.chatIncomingButtonColor;
-    _overlayView.outgoingColor = false ? [UIColor whiteColor] : presentation.pallete.chatOutgoingButtonColor;
+    _overlayView.outgoingColor = presentation.pallete.chatOutgoingButtonColor;
     _overlayView.incomingIconColor = presentation.pallete.chatIncomingButtonIconColor;
-    _overlayView.outgoingIconColor = false ? UIColorRGB(0x609bd5) : presentation.pallete.chatOutgoingButtonIconColor;
+    _overlayView.outgoingIconColor = presentation.pallete.chatOutgoingButtonIconColor;
     _extensionLabel.textColor = (!_incoming && false) ? [UIColor whiteColor] : TGAccentColor();
     [self updateBrandedMediaButton];
 }

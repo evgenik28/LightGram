@@ -461,7 +461,7 @@ static char TGContentBubbleViewModelDoubleTapRecognizerPoolKey;
         
         [_contentModel addSubmodel:_forwardedHeaderModel];
         
-        if (_incomingAppearance && [forwardPeer isKindOfClass:[TGConversation class]] && !false) {
+        if (_incomingAppearance && [forwardPeer isKindOfClass:[TGConversation class]]) {
             TGConversation *conversation = forwardPeer;
             if (conversation.isChannel && !conversation.isChannelGroup) {
                 if (_actionButtonModel == nil) {

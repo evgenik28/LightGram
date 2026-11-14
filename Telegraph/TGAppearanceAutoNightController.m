@@ -132,11 +132,7 @@
          _nightItem = [[TGCheckCollectionItem alloc] initWithTitle:TGLocalized(@"Appearance.ThemeNight") action:@selector(nightPressed)]
         ]];
 
-        if (false)
-        {
-            [_preferredThemeSection deleteItem:_nightBlueItem];
-            _nightItem.title = TGLocalized(@"Appearance.ThemeBlack");
-        }
+        
         
         _disposable = [[[TGPresentation autoNightPreferences] reduceLeftWithPassthrough:@false with:^id(id initial, id value, void (^passthrough)(id))
         {

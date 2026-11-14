@@ -348,12 +348,6 @@
     
     CGRect frame = CGRectMake(self.frame.origin.x, self.frame.origin.y, MAX(labelSize.width, titleSize.width) + backgroundInsets.left +  backgroundInsets.right + contentInsets.left + contentInsets.right, labelSize.height + backgroundInsets.top + backgroundInsets.bottom + contentInsets.top + contentInsets.bottom + titleSize.height + [self titleSpacing]);
     
-    if (false && [TGViewController hasLargeScreen])
-    {
-        frame.size.width = CGEven(frame.size.width);
-        frame.size.height = CGEven(frame.size.height);
-    }
-    else
     {
         frame.size.width = CGOdd(frame.size.width);
         frame.size.height = CGOdd(frame.size.height);

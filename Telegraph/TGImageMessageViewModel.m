@@ -244,8 +244,7 @@ static bool OGCompatImageMessageHasDiscussionFooter(TGMessage *message)
 
 - (bool)og_compat_wantsGloss
 {
-    if (!false)
-        return false;
+    return false;
     
     bool standalone = _positionFlags == TGMessageGroupPositionNone && _caption.length == 0 && _replyHeader == nil && _viaUser == nil && _webPageFooterModel == nil;
     bool forwardAllowed = _forwardPeer == nil || _context.isSavedMessages;
@@ -1007,7 +1006,7 @@ static CGSize TGImageMessageAspectFilled(CGSize size, CGSize boundingSize)
         bool beforePreviousVisible = beforePreviousMid != 0 && (beforePreviousFlags & TGMessageGroupPositionBottom) ? visibilityTest(beforePreviousMid) : true;
         
         bool timestampHidden = false || !currentVisible || !previousVisible || !beforePreviousVisible;
-        [_imageModel setTimestampHidden:timestampHidden animated:false ? false : (alwaysAnimated || !timestampHidden)];
+        [_imageModel setTimestampHidden:timestampHidden animated:(alwaysAnimated || !timestampHidden)];
     }
 }
 
@@ -2475,7 +2474,6 @@ static CGSize TGImageMessageAspectFilled(CGSize size, CGSize boundingSize)
     
     CGSize textSize = CGSizeZero;
     CGFloat infoWidth = 0.0f;
-    if (!false)
     {
         if (!_incoming) {
             if (_messageViews == nil) {
@@ -2498,7 +2496,7 @@ static CGSize TGImageMessageAspectFilled(CGSize size, CGSize boundingSize)
     }
     
     if (_messageViews != nil) {
-        infoWidth += _messageViewsModel.frame.size.width + (false ? 6.0f : TGMessageFontMetric(3.0f));
+        infoWidth += _messageViewsModel.frame.size.width + (TGMessageFontMetric(3.0f));
     }
     if (standardCaptionLayout) {
         infoWidth = _dateModel.frame.size.width + captionStatusWidth + TGMessageFontMetric(4.0f);
@@ -2600,7 +2598,7 @@ static CGSize TGImageMessageAspectFilled(CGSize size, CGSize boundingSize)
         }
         else
         {
-            CGFloat bubbleBottomInset = false ? [TGPresentation brandedIOS6BubbleImageInsetsOutgoing:!_incomingAppearance].bottom : layoutConstants->textBubblePaddingBottom;
+            CGFloat bubbleBottomInset = layoutConstants->textBubblePaddingBottom;
             mediaReactionsBottomSpace = bubbleBottomInset + reactionsMetrics.topSpacing;
             mediaReactionsAttachedHeight = reactionsMetrics.topSpacing + mediaReactionsLayout.size.height + mediaReactionsBottomSpace;
             textSize.height += mediaReactionsAttachedHeight;

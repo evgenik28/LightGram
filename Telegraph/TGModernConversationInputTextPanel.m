@@ -571,10 +571,7 @@ static CGRect viewFrame(UIView *view)
         [self og_compat_hideBackdrop];
         _backgroundView.backgroundColor = [TGPresentation brandedIOS6ConversationAppearance].inputPanelExtensionColor;
     }
-    else if (false)
-        [self og_compat_installBackdropWithPresentation:presentation];
-    else
-    {
+    else {
         [self og_compat_hideBackdrop];
         _backgroundView.backgroundColor = presentation.pallete.barBackgroundColor;
         _stripeView.backgroundColor = presentation.pallete.barSeparatorColor;
@@ -787,8 +784,7 @@ static CGRect viewFrame(UIView *view)
 - (CGFloat)fontSize
 {
     CGFloat fontSize = MAX(TGPresentation.fontSize, TGModernConversationInputDefaultFontSize);
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldFont.pointSize + fontSize - TGModernConversationInputDefaultFontSize;
+    
     return fontSize;
 }
 
@@ -799,8 +795,7 @@ static CGRect viewFrame(UIView *view)
 
 - (UIFont *)inputFieldFontOfSize:(CGFloat)size
 {
-    if (false)
-        return [[TGPresentation brandedIOS6ConversationAppearance].inputFieldFont fontWithSize:size];
+    
     return TGSystemFontOfSize(size);
 }
 
@@ -1958,18 +1953,13 @@ static CGRect viewFrame(UIView *view)
 
 - (CGFloat)sendButtonAreaWidth
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldInsets.right;
+    
     return 45.0f;
 }
 
 - (CGFloat)baseButtonWidth
 {
-    if (false)
-    {
-        LGConversationAppearance *appearance = [TGPresentation brandedIOS6ConversationAppearance];
-        return appearance.inputPanelPadding.left + appearance.inputButtonSize + appearance.inputPanelPadding.right;
-    }
+    
      CGFloat value = 45.0f;
     if (TGIsPad())
         value += 11.0f;
@@ -1978,8 +1968,7 @@ static CGRect viewFrame(UIView *view)
 
 - (CGFloat)baseHeight
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputPanelHeight;
+    
     CGFloat value = 45.0f;
     switch ((int)[self fontSize])
     {
@@ -2016,11 +2005,7 @@ static CGRect viewFrame(UIView *view)
 
 - (UIEdgeInsets)inputFieldInsets
 {
-    if (false)
-    {
-        UIEdgeInsets brandedInsets = [TGPresentation brandedIOS6ConversationAppearance].inputFieldInsets;
-        return UIEdgeInsetsMake(brandedInsets.top, brandedInsets.left, brandedInsets.bottom, 0.0f);
-    }
+    
     static UIEdgeInsets insets;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^
@@ -2036,11 +2021,7 @@ static CGRect viewFrame(UIView *view)
 
 - (UIEdgeInsets)inputFieldInternalEdgeInsets
 {
-    if (false)
-    {
-        UIEdgeInsets textInsets = [TGPresentation brandedIOS6ConversationAppearance].inputFieldTextInsets;
-        return UIEdgeInsetsMake(textInsets.top - TGModernConversationInputTextVerticalInset, textInsets.left - TGModernConversationInputTextHorizontalInset, 0.0f, 0.0f);
-    }
+    
     static UIEdgeInsets insets;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^
@@ -2053,11 +2034,7 @@ static CGRect viewFrame(UIView *view)
 
 - (CGPoint)inputFieldPlaceholderOffset
 {
-    if (false)
-    {
-        UIEdgeInsets textInsets = [TGPresentation brandedIOS6ConversationAppearance].inputFieldTextInsets;
-        return CGPointMake(textInsets.left - TGModernConversationInputPlaceholderMargin, textInsets.top - TGModernConversationInputPlaceholderMargin);
-    }
+    
     static CGPoint offset;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^
@@ -2087,11 +2064,7 @@ static CGRect viewFrame(UIView *view)
 
 - (CGFloat)inputFieldHeightCompensation
 {
-    if (false)
-    {
-        UIEdgeInsets textInsets = [TGPresentation brandedIOS6ConversationAppearance].inputFieldTextInsets;
-        return TGModernConversationInputTextVerticalInset * 2.0f - textInsets.top - textInsets.bottom;
-    }
+    
     return 4.0f;
 }
 
@@ -2315,11 +2288,7 @@ static CGRect viewFrame(UIView *view)
 
 - (CGFloat)modeButtonOffset
 {
-    if (false)
-    {
-        LGConversationAppearance *appearance = [TGPresentation brandedIOS6ConversationAppearance];
-        return [self baseHeight] - appearance.inputFieldInsets.bottom - (appearance.inputFieldHeight + TGModernConversationInputModeButtonHeight) / 2.0f;
-    }
+    
     CGFloat value = 0.0f;
     switch ((int)[self fontSize])
     {
@@ -2434,7 +2403,7 @@ static CGRect viewFrame(UIView *view)
     _micButton.center = CGPointMake(CGRectGetMidX(newMicButtonFrame), globalVerticalOffset + CGRectGetMidY(newMicButtonFrame));
     
     CGRect micButtonFrame = viewFrame(_micButton);
-    CGRect newMicButtonIconViewFrame =  CGRectMake(CGFloor((micButtonFrame.size.width - _micButtonIconView.frame.size.width) / 2.0f), CGFloor((micButtonFrame.size.height - _micButtonIconView.frame.size.height) / 2.0f) + (false ? 0.0f : TGScreenPixel), _micButtonIconView.frame.size.width, _micButtonIconView.frame.size.height);
+    CGRect newMicButtonIconViewFrame =  CGRectMake(CGFloor((micButtonFrame.size.width - _micButtonIconView.frame.size.width) / 2.0f), CGFloor((micButtonFrame.size.height - _micButtonIconView.frame.size.height) / 2.0f) + (TGScreenPixel), _micButtonIconView.frame.size.width, _micButtonIconView.frame.size.height);
     _micButtonIconView.center = CGPointMake(CGRectGetMidX(newMicButtonIconViewFrame), CGRectGetMidY(newMicButtonIconViewFrame));;
     
     if (_slideToCancelLabel != nil)

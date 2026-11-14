@@ -774,9 +774,7 @@ static void TGUnsupportedMessageRequestFailed(int64_t peerId, int32_t messageId)
     }];
     if (firstTime)
     {
-        if (false && self.useInitialSnapshot && animated && [[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPhone) {
-            [self _createInitialSnapshot];
-        } else {
+        {
 #if defined(LIGHTGRAM_ARMV6)
             if (!_initialItemsPreparationPending)
 #endif

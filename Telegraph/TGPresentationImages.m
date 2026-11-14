@@ -544,7 +544,7 @@
 - (UIImage *)chatMentionsImage
 {
     return [self imageWithKey:@"chatMentions" generator:^UIImage *{
-        UIImage *brandedImage = false ? [TGPresentation brandedIOS6ScrollButtonImageMentions:true] : nil;
+        UIImage *brandedImage = nil;
         if (brandedImage != nil)
             return brandedImage;
         return [TGPresentationAssets chatMentionsButton:self.pallete.chatInputButtonColor backgroundColor:self.pallete.barBackgroundColor borderColor:self.pallete.barSeparatorColor];
@@ -554,7 +554,7 @@
 - (UIImage *)chatDownImage
 {
     return [self imageWithKey:@"chatDown" generator:^UIImage *{
-        UIImage *brandedImage = false ? [TGPresentation brandedIOS6ScrollButtonImageMentions:false] : nil;
+        UIImage *brandedImage = nil;
         if (brandedImage != nil)
             return brandedImage;
         return [TGPresentationAssets chatDownButton:self.pallete.chatInputButtonColor backgroundColor:self.pallete.barBackgroundColor borderColor:self.pallete.barSeparatorColor];
@@ -571,64 +571,56 @@
 - (UIImage *)chatBubbleIncomingFullImage
 {
     return [self imageWithKey:@"chatBubbleIncomingFull" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6BubbleImageOutgoing:false highlighted:false];
+        
         return [TGPresentationAssets chatBubbleImage:self.pallete.chatIncomingBubbleColor borderColor:self.pallete.chatIncomingBubbleBorderColor outgoing:false hasTail:true radius:_bubbleRadius];
     }];
 }
 
 - (UIImage *)chatBubbleIncomingFullHighlightedImage
 {
-    if (false)
-        return [TGPresentation brandedIOS6BubbleImageOutgoing:false highlighted:true];
+    
     return [TGPresentationAssets chatBubbleImage:self.pallete.chatIncomingHighlightedBubbleColor borderColor:self.pallete.chatIncomingHighlightedBubbleBorderColor outgoing:false hasTail:true radius:_bubbleRadius];
 }
 
 - (UIImage *)chatBubbleIncomingPartialImage
 {
     return [self imageWithKey:@"chatBubbleIncomingPartial" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6BubbleImageOutgoing:false highlighted:false];
+        
         return [TGPresentationAssets chatBubbleImage:self.pallete.chatIncomingBubbleColor borderColor:self.pallete.chatIncomingBubbleBorderColor outgoing:false hasTail:false radius:_bubbleRadius];
     }];
 }
 
 - (UIImage *)chatBubbleIncomingPartialHighlightedImage
 {
-    if (false)
-        return [TGPresentation brandedIOS6BubbleImageOutgoing:false highlighted:true];
+    
     return [TGPresentationAssets chatBubbleImage:self.pallete.chatIncomingHighlightedBubbleColor borderColor:self.pallete.chatIncomingHighlightedBubbleBorderColor outgoing:false hasTail:false radius:_bubbleRadius];
 }
 
 - (UIImage *)chatBubbleOutgoingFullImage
 {
     return [self imageWithKey:@"chatBubbleOutgoingFull" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6BubbleImageOutgoing:true highlighted:false];
+        
         return [TGPresentationAssets chatBubbleImage:self.pallete.chatOutgoingBubbleColor borderColor:self.pallete.chatOutgoingBubbleBorderColor outgoing:true hasTail:true radius:_bubbleRadius];
     }];
 }
 
 - (UIImage *)chatBubbleOutgoingFullHighlightedImage
 {
-    if (false)
-        return [TGPresentation brandedIOS6BubbleImageOutgoing:true highlighted:true];
+    
     return [TGPresentationAssets chatBubbleImage:self.pallete.chatOutgoingHighlightedBubbleColor borderColor:self.pallete.chatOutgoingHighlightedBubbleBorderColor outgoing:true hasTail:true radius:_bubbleRadius];
 }
 
 - (UIImage *)chatBubbleOutgoingPartialImage
 {
     return [self imageWithKey:@"chatBubbleOutgoingPartial" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6BubbleImageOutgoing:true highlighted:false];
+        
         return [TGPresentationAssets chatBubbleImage:self.pallete.chatOutgoingBubbleColor borderColor:self.pallete.chatOutgoingBubbleBorderColor outgoing:true hasTail:false radius:_bubbleRadius];
     }];
 }
 
 - (UIImage *)chatBubbleOutgoingPartialHighlightedImage
 {
-    if (false)
-        return [TGPresentation brandedIOS6BubbleImageOutgoing:true highlighted:true];
+    
     return [TGPresentationAssets chatBubbleImage:self.pallete.chatOutgoingHighlightedBubbleColor borderColor:self.pallete.chatOutgoingHighlightedBubbleBorderColor outgoing:true hasTail:false radius:_bubbleRadius];
 }
 
@@ -894,8 +886,7 @@
 - (UIImage *)chatIncomingMessageViewsIcon
 {
     return [self imageWithKey:@"chatMessageViewsIncoming" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6MessageViewsIconWithColor:self.pallete.chatIncomingDateColor];
+        
         return [TGPresentationAssets chatMessageViewsIcon:self.pallete.chatIncomingDateColor];
     }];
 }
@@ -903,8 +894,7 @@
 - (UIImage *)chatOutgoingMessageViewsIcon
 {
     return [self imageWithKey:@"chatMessageViewsOutgoing" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6MessageViewsIconWithColor:self.pallete.chatOutgoingDateColor];
+        
         return [TGPresentationAssets chatMessageViewsIcon:self.pallete.chatOutgoingDateColor];
     }];
 }
@@ -912,8 +902,7 @@
 - (UIImage *)chatMediaMessageViewsIcon
 {
     return [self imageWithKey:@"chatMessageViewsMedia" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6MessageViewsIconWithColor:self.pallete.chatChecksMediaColor];
+        
         return [TGPresentationAssets chatMessageViewsIcon:self.pallete.chatChecksMediaColor];
     }];
 }
@@ -921,8 +910,7 @@
 - (UIImage *)chatStickerMessageViewsIcon
 {
     return [self imageWithKey:@"chatMessageViewsSticker" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6MessageViewsIconWithColor:self.pallete.chatSystemTextColor];
+        
         return [TGPresentationAssets chatMessageViewsIcon:self.pallete.chatSystemTextColor];
     }];
 }
@@ -937,8 +925,7 @@
 - (UIImage *)chatInputAttachIcon
 {
     return [self imageWithKey:@"chatAttach" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6InputButtonImageWithGlyph:TGBrandedIOS6InputGlyphAttach accentColor:nil];
+        
         return [TGPresentationAssets inputPanelAttachIcon:self.pallete.chatInputButtonColor accentColor:nil];
     }];
 }
@@ -946,8 +933,7 @@
 - (UIImage *)chatInputAttachEditIcon
 {
     return [self imageWithKey:@"chatAttachEdit" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6InputButtonImageWithGlyph:TGBrandedIOS6InputGlyphAttachEdit accentColor:self.pallete.chatInputSendButtonColor];
+        
         return [TGPresentationAssets inputPanelAttachIcon:self.pallete.chatInputButtonColor accentColor:self.pallete.chatInputSendButtonColor];
     }];
 }
@@ -955,8 +941,7 @@
 - (UIImage *)chatInputSendIcon
 {
     return [self imageWithKey:@"chatSend" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6InputButtonImageWithGlyph:TGBrandedIOS6InputGlyphSend accentColor:nil];
+        
         return [TGPresentationAssets inputPanelSendIcon:self.pallete.chatInputSendButtonColor color:self.pallete.chatInputSendButtonIconColor];
     }];
 }
@@ -964,8 +949,7 @@
 - (UIImage *)chatInputConfirmIcon
 {
     return [self imageWithKey:@"chatConfirm" generator:^UIImage *{
-        if (false)
-            return [TGPresentation brandedIOS6InputButtonImageWithGlyph:TGBrandedIOS6InputGlyphConfirm accentColor:nil];
+        
         return [TGPresentationAssets inputPanelConfirmIcon:self.pallete.chatInputSendButtonColor color:self.pallete.chatInputSendButtonIconColor];
     }];
 }
@@ -986,8 +970,7 @@
 
 - (UIImage *)chatInputMicrophoneButtonIcon
 {
-    if (!false)
-        return [self chatInputMicrophoneIcon];
+    return [self chatInputMicrophoneIcon];
     return [self imageWithKey:@"chatMicButton" generator:^UIImage *{
         return [TGPresentation brandedIOS6InputButtonImageWithGlyph:TGBrandedIOS6InputGlyphMicrophone accentColor:nil];
     }];
@@ -995,8 +978,7 @@
 
 - (UIImage *)chatInputVideoMessageButtonIcon
 {
-    if (!false)
-        return [self chatInputVideoMessageIcon];
+    return [self chatInputVideoMessageIcon];
     return [self imageWithKey:@"chatVMButton" generator:^UIImage *{
         return [TGPresentation brandedIOS6InputButtonImageWithGlyph:TGBrandedIOS6InputGlyphVideoMessage accentColor:nil];
     }];

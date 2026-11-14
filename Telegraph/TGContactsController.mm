@@ -433,8 +433,7 @@ static bool TGContactListSectionComparator(std::tr1::shared_ptr<TGContactListSec
 
 - (LGContactListAppearance *)brandedContactListAppearance
 {
-    if (!false || (_contactsMode & TGContactsModeMainContacts) != TGContactsModeMainContacts)
-        return nil;
+    return nil;
     return [TGPresentation brandedIOS6ContactListAppearance];
 }
 

@@ -49,11 +49,7 @@
         self.backgroundColor = [UIColor clearColor];
         self.userInteractionEnabled = false;
         
-        if (false && [TGViewController hasTallScreen])
-        {
-            _iconView = [[UIImageView alloc] init];
-            [_wrapperView addSubview:_iconView];
-        }
+        
         
         _wrapperView = [[UIView alloc] initWithFrame:CGRectOffset(self.bounds, 0.0f, _iconView == nil ? -self.bounds.size.height : 0.0f)];
         _wrapperView.alpha = _iconView != nil ? 0.0f : 1.0f;

@@ -44,41 +44,22 @@ static UIImage *TGMainTabsBrandedIOS6Icon(NSString *name, UIImage *fallbackTempl
 
 static void TGMainTabsApplyTabLabelStyle(UILabel *label, TGPresentation *presentation)
 {
-    if (false)
-    {
-        LGTabBarAppearance *appearance = [LGTheme brandedTheme].tabBarAppearance;
-        label.textColor = appearance.titleColor;
-        label.highlightedTextColor = appearance.titleColor;
-        if (LGPlatformLayerSupportsShadow(label.layer))
-        {
-            label.shadowColor = [UIColor clearColor];
-            label.shadowOffset = CGSizeZero;
-            LGPlatformSetLayerShadow(label.layer, appearance.titleShadowColor, 1.0f, appearance.titleShadowRadius, appearance.titleShadowOffset);
-        }
-        else
-        {
-            label.shadowColor = appearance.titleShadowColor;
-            label.shadowOffset = appearance.titleShadowOffset;
-        }
-        return;
-    }
+    
 
     LGPlatformSetLayerShadow(label.layer, nil, 0.0f, 0.0f, CGSizeZero);
 
-    label.textColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.tabTextColor : UIColorRGB(0xc7c9cb)) : presentation.pallete.tabTextColor;
-    label.highlightedTextColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.tabActiveIconColor : UIColorRGB(0xffffff)) : presentation.pallete.tabActiveIconColor;
-    label.shadowColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? UIColorRGBA(0x000000, presentation.pallete.isDark ? 0.85f : 0.2f) : UIColorRGBA(0x000000, 0.85f)) : [UIColor clearColor];
-    label.shadowOffset = false ? CGSizeMake(0.0f, -1.0f) : CGSizeZero;
+    label.textColor = presentation.pallete.tabTextColor;
+    label.highlightedTextColor = presentation.pallete.tabActiveIconColor;
+    label.shadowColor = [UIColor clearColor];
+    label.shadowOffset = CGSizeZero;
 }
 
 static UIFont *TGMainTabsTabLabelFont(bool landscape)
 {
     if (landscape)
-        return false ? TGBoldSystemFontOfSize(12.0f) : TGSystemFontOfSize(12.0f);
-    if (false)
-        return [LGTheme brandedTheme].tabBarAppearance.titleFont;
-    if (false)
-        return TGBoldSystemFontOfSize(TGIsPad() ? 11.0f : 10.0f);
+        return TGSystemFontOfSize(12.0f);
+    
+    
     return TGMediumSystemFontOfSize(TGIsPad() ? 11.0f : 10.0f);
 }
 
@@ -115,8 +96,7 @@ static UIImage *TGMainTabsClassicResizableImage(NSString *name)
 
 static UIColor *TGMainTabsClassicSelectedColor(TGPresentation *presentation)
 {
-    if (false && presentation.pallete.isDark)
-        return UIColorRGB(0x2b78c5);
+    
     return presentation.pallete.tabActiveIconColor;
 }
 
@@ -135,13 +115,6 @@ static void TGMainTabsConfigureClassicIOS4TitleLabel(UILabel *label, NSString *t
     label.backgroundColor = [UIColor clearColor];
     label.font = TGBoldSystemFontOfSize(17.0f);
     label.text = title;
-    if (false)
-    {
-        label.textColor = [UIColor whiteColor];
-        label.shadowColor = presentation.pallete.isDark ? UIColorRGBA(0x000000, 0.9f) : UIColorRGBA(0x1f3446, 0.9f);
-        label.shadowOffset = CGSizeMake(0.0f, -1.0f);
-    }
-    else
     {
         UIColor *titleColor = presentation.pallete.navigationTitleColor;
         label.textColor = titleColor != nil ? titleColor : [UIColor blackColor];
@@ -199,28 +172,6 @@ static void TGMainTabsConfigureClassicIOS4TitleLabel(UILabel *label, NSString *t
 
 - (void)setPresentation:(TGPresentation *)presentation
 {
-    if (false)
-    {
-        _backgroundView.image = [TGPresentation brandedIOS6BadgeImage];
-        LGPlatformApplyViewShadow(_backgroundView, [UIColor blackColor], 0.80f, 1.5f, CGSizeMake(0.0f, 2.0f));
-        UIFont *badgeFont = TGBoldSystemFontOfSize(11.0f);
-        _label.font = badgeFont != nil ? badgeFont : TGBoldSystemFontOfSize(11.0f);
-        _label.textColor = [UIColor whiteColor];
-        _label.shadowColor = [UIColor clearColor];
-        _label.shadowOffset = CGSizeZero;
-    }
-    else if (false)
-    {
-        UIImage *badgeImage = TGMainTabsClassicIOS6ResizableImageWithHorizontalCap(@"TabBarBadge", 10.0f);
-        UIColor *badgeColor = presentation.pallete.isDark ? TGMainTabsClassicSelectedColor(presentation) : presentation.pallete.tabBadgeColor;
-        _backgroundView.image = [TGPresentation classicIOS6ThemedImage:badgeImage tintColor:badgeColor alpha:presentation.pallete.isDark ? 0.95f : 0.5f];
-        LGPlatformApplyViewShadow(_backgroundView, nil, 0.0f, 0.0f, CGSizeZero);
-        _label.font = TGBoldSystemFontOfSize(12.0f);
-        _label.textColor = presentation.pallete.isDark ? [UIColor whiteColor] : (presentation.pallete.tabBadgeTextColor ?: [UIColor whiteColor]);
-        _label.shadowColor = [TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? UIColorRGBA(0x000000, presentation.pallete.isDark ? 0.7f : 0.25f) : UIColorRGBA(0x000000, 0.85f);
-        _label.shadowOffset = CGSizeMake(0.0f, -1.0f);
-    }
-    else
     {
         _backgroundView.image = presentation.images.tabBarBadgeImage;
         LGPlatformApplyViewShadow(_backgroundView, nil, 0.0f, 0.0f, CGSizeZero);
@@ -241,11 +192,7 @@ static void TGMainTabsConfigureClassicIOS4TitleLabel(UILabel *label, NSString *t
     {
         NSString *text = nil;
         
-        if (false)
-        {
-            text = [TGPresentation brandedIOS6BadgeTextForCount:count];
-        }
-        else if (TGIsLocaleArabic())
+        if (TGIsLocaleArabic())
         {
             text = [TGStringUtils stringWithLocalizedNumber:count];
         }
@@ -267,13 +214,6 @@ static void TGMainTabsConfigureClassicIOS4TitleLabel(UILabel *label, NSString *t
         
         CGRect frame = _backgroundView.frame;
         CGFloat textWidth = CGCeil(_label.frame.size.width);
-        if (false)
-        {
-            frame.size.width = MAX(18.0f, textWidth + 10.0f);
-            frame.size.height = 18.0f;
-            frame.origin.y = 0.0f;
-        }
-        else
         {
             frame.size.width = count < 10 ? 20.0f : MAX(20.0f, textWidth + 10.0f + TGScreenPixel * 2.0f);
             frame.size.height = 20.0f;
@@ -281,18 +221,13 @@ static void TGMainTabsConfigureClassicIOS4TitleLabel(UILabel *label, NSString *t
         }
         frame.origin.x = _backgroundView.superview.frame.size.width - frame.size.width - 1.0f;
         _backgroundView.frame = frame;
-        if (false)
-            _backgroundView.image = [TGPresentation brandedIOS6BadgeImageForWidth:frame.size.width];
+        
         
         CGRect labelFrame = _label.frame;
         labelFrame.origin.x = frame.origin.x;
-        labelFrame.origin.y = false ? frame.origin.y : (false ? 0.0f : 1.0f);
+        labelFrame.origin.y = (1.0f);
         labelFrame.size.width = frame.size.width;
-        if (false)
-        {
-            labelFrame.origin.y = frame.origin.y;
-            labelFrame.size.height = frame.size.height;
-        }
+        
         _label.frame = labelFrame;
     }
 }
@@ -373,7 +308,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
     _imageView.image = image;
     if (_imageView.highlighted)
     {
-        _imageView.highlightedImage = _compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(image, false ? TGMainTabsClassicSelectedColor(presentation) : presentation.pallete.tabActiveIconColor);
+        _imageView.highlightedImage = _compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(image, presentation.pallete.tabActiveIconColor);
         _imageView.highlighted = false;
         _imageView.highlighted = true;
     }
@@ -478,7 +413,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
 - (void)og_compat_setSelectedGlossImage:(UIImage *)image
 {
     _compatSelectedImage = image;
-    if (_compatSelectedImage != nil && _compatSelectionLayer == nil && !false)
+    if (_compatSelectedImage != nil && _compatSelectionLayer == nil)
     {
         _compatSelectionLayer = [CAGradientLayer layer];
         UIImage *selectionImage = TGMainTabsClassicResizableImage(@"TabBarSelected");
@@ -489,7 +424,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
         [self.layer insertSublayer:_compatSelectionLayer atIndex:0];
     }
     _compatSelectionLayer.hidden = _compatSelectedImage == nil || !_selected || false;
-    _imageView.highlightedImage = _selected ? (_compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(_imageView.image, false ? TGMainTabsClassicSelectedColor(_presentation) : _presentation.pallete.tabActiveIconColor)) : nil;
+    _imageView.highlightedImage = _selected ? (_compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(_imageView.image, _presentation.pallete.tabActiveIconColor)) : nil;
 }
 
 - (void)setSelected:(bool)selected
@@ -499,7 +434,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
         [self reloadAvatarImageIfFailed];
     _compatSelectionLayer.hidden = _compatSelectedImage == nil || !selected || false;
     if (_imageView.highlightedImage == nil && selected)
-        _imageView.highlightedImage = _compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(_imageView.image, false ? TGMainTabsClassicSelectedColor(_presentation) : _presentation.pallete.tabActiveIconColor);
+        _imageView.highlightedImage = _compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(_imageView.image, _presentation.pallete.tabActiveIconColor);
     _imageView.highlighted = selected;
     _label.highlighted = selected;
     [self updateAvatarRing];
@@ -547,16 +482,10 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
     if (_compatSelectionLayer != nil)
         _compatSelectionLayer.frame = self.bounds;
 
-    if (false && !_landscape)
-    {
-        [self layoutBrandedPortrait];
-        [self layoutAvatar];
-        return;
-    }
+    
 
     CGFloat imageVerticalOffset = [self iconVerticalOffset];
-    if (false)
-        imageVerticalOffset += (32.0f - _imageView.bounds.size.height) / 2.0f;
+    
 
     _imageView.frame = CGRectMake(floor((self.frame.size.width - _imageView.frame.size.width) / 2), imageVerticalOffset, _imageView.frame.size.width, _imageView.frame.size.height);
     
@@ -712,28 +641,22 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
         _presentation = presentation;
         
         _backgroundView = [[UIView alloc] init];
-        if (false)
-        {
-            _backgroundView.backgroundColor = [UIColor clearColor];
-            [self installClassicBackgroundViewIfNeeded];
-        }
-        else
-            _backgroundView.backgroundColor = presentation.pallete.barBackgroundColor;
+        _backgroundView.backgroundColor = presentation.pallete.barBackgroundColor;
         _backgroundView.frame = self.bounds;
         [self addSubview:_backgroundView];
         
         _stripeView = [[UIView alloc] init];
-        _stripeView.backgroundColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.barSeparatorColor : UIColorRGB(0xa4a8ac)) : presentation.pallete.barSeparatorColor;
+        _stripeView.backgroundColor = presentation.pallete.barSeparatorColor;
         _stripeView.hidden = false;
         [self addSubview:_stripeView];
         
         _tabButtons = [[NSMutableArray alloc] init];
         phaseStart = CFAbsoluteTimeGetCurrent();
         
-        UIImage *contactsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, false) : presentation.images.tabBarContactsIcon;
-        UIImage *callsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, false) : presentation.images.tabBarCallsIcon;
-        UIImage *chatsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, false) : presentation.images.tabBarChatsIcon;
-        UIImage *settingsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, false) : presentation.images.tabBarSettingsIcon;
+        UIImage *contactsImage = presentation.images.tabBarContactsIcon;
+        UIImage *callsImage = presentation.images.tabBarCallsIcon;
+        UIImage *chatsImage = presentation.images.tabBarChatsIcon;
+        UIImage *settingsImage = presentation.images.tabBarSettingsIcon;
         phaseStart = CFAbsoluteTimeGetCurrent();
 
         CFAbsoluteTime buttonPhaseStart = CFAbsoluteTimeGetCurrent();
@@ -756,22 +679,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
         _callsButton = [[TGTabBarButton alloc] initWithImage:callsImage title:callsTitle presentation:presentation];
         _profileButton = [[TGTabBarButton alloc] initWithImage:presentation.images.tabBarProfileIcon title:TGLocalized(@"LightGramProfile.TabTitle") presentation:presentation];
         phaseStart = CFAbsoluteTimeGetCurrent();
-        if (false)
-        {
-            if (false)
-            {
-                [_contactsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, true)];
-                [_callsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, true)];
-                [_chatsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, true)];
-                [_settingsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, true)];
-            }
-            else
-            {
-                [_contactsButton og_compat_setSelectedGlossImage:OGCompatTabHighlightedImage(@"TabIconContacts_Highlighted", presentation)];
-                [_chatsButton og_compat_setSelectedGlossImage:OGCompatTabHighlightedImage(@"TabIconMessages_Highlighted", presentation)];
-                [_settingsButton og_compat_setSelectedGlossImage:OGCompatTabHighlightedImage(@"TabIconSettings_Highlighted", presentation)];
-            }
-        }
+        
         phaseStart = CFAbsoluteTimeGetCurrent();
         _callsHidden = true;
         _callsButton.hidden = true;
@@ -816,7 +724,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
     if (_classicBackgroundView != nil)
         return;
 
-    _classicBackgroundView = [[UIImageView alloc] initWithImage:false ? nil : [self classicBackgroundImage]];
+    _classicBackgroundView = [[UIImageView alloc] initWithImage:[self classicBackgroundImage]];
     [_backgroundView addSubview:_classicBackgroundView];
 }
 
@@ -824,30 +732,6 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
 {
     _presentation = presentation;
 
-    if (false)
-    {
-        [self installClassicBackgroundViewIfNeeded];
-        _classicBackgroundView.hidden = false;
-        _backgroundView.backgroundColor = [UIColor clearColor];
-        if (!false)
-            _callsHidden = true;
-        _callsButton.alpha = _callsHidden ? 0.0f : 1.0f;
-        _callsButton.hidden = _callsHidden;
-        _brandedBackgroundKey = nil;
-        if (false)
-        {
-            _classicBackgroundView.image = nil;
-            _stripeView.hidden = true;
-            [self setNeedsLayout];
-        }
-        else
-        {
-            _classicBackgroundView.image = [self classicBackgroundImage];
-            _stripeView.hidden = false;
-            _stripeView.backgroundColor = [TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.barSeparatorColor : UIColorRGB(0xa4a8ac);
-        }
-    }
-    else
     {
         _classicBackgroundView.hidden = true;
         _backgroundView.backgroundColor = presentation.pallete.barBackgroundColor;
@@ -855,24 +739,16 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
         _stripeView.backgroundColor = presentation.pallete.barSeparatorColor;
     }
 
-    UIImage *contactsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, false) : presentation.images.tabBarContactsIcon;
-    UIImage *callsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, false) : presentation.images.tabBarCallsIcon;
-    UIImage *chatsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, false) : presentation.images.tabBarChatsIcon;
-    UIImage *settingsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, false) : presentation.images.tabBarSettingsIcon;
+    UIImage *contactsImage = presentation.images.tabBarContactsIcon;
+    UIImage *callsImage = presentation.images.tabBarCallsIcon;
+    UIImage *chatsImage = presentation.images.tabBarChatsIcon;
+    UIImage *settingsImage = presentation.images.tabBarSettingsIcon;
 
-    if (false)
     {
-        [_contactsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, true)];
-        [_callsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, true)];
-        [_chatsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, true)];
-        [_settingsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, true)];
-    }
-    else
-    {
-        [_contactsButton og_compat_setSelectedGlossImage:false ? OGCompatTabHighlightedImage(@"TabIconContacts_Highlighted", presentation) : nil];
+        [_contactsButton og_compat_setSelectedGlossImage:nil];
         [_callsButton og_compat_setSelectedGlossImage:nil];
-        [_chatsButton og_compat_setSelectedGlossImage:false ? OGCompatTabHighlightedImage(@"TabIconMessages_Highlighted", presentation) : nil];
-        [_settingsButton og_compat_setSelectedGlossImage:false ? OGCompatTabHighlightedImage(@"TabIconSettings_Highlighted", presentation) : nil];
+        [_chatsButton og_compat_setSelectedGlossImage:nil];
+        [_settingsButton og_compat_setSelectedGlossImage:nil];
     }
 
     [_contactsButton setImage:contactsImage presentation:presentation];
@@ -1098,11 +974,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
 
 - (void)updateArrow
 {
-    if (false)
-    {
-        [_chatsButton setImage:TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, self.presentation.images.tabBarChatsIcon, false) presentation:self.presentation];
-        return;
-    }
+    
 
     if (_selectedIndex == 2 && _unreadArrowUp != nil)
     {
@@ -1182,8 +1054,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
 
 - (void)updateBrandedBackground
 {
-    if (!false || _classicBackgroundView == nil)
-        return;
+    return;
     
     CGSize viewSize = self.bounds.size;
     if (viewSize.width < 1.0f || viewSize.height < 1.0f)
@@ -1219,7 +1090,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
     _backgroundView.frame = CGRectMake(0, 0, viewSize.width, viewSize.height);
     _classicBackgroundView.frame = _backgroundView.bounds;
     CGFloat stripeHeight = TGScreenPixel;
-    CGFloat stripeOriginY = false ? 0.0f : -stripeHeight;
+    CGFloat stripeOriginY = -stripeHeight;
     _stripeView.frame = CGRectMake(0, stripeOriginY, viewSize.width, stripeHeight);
     
     [self layoutButtons];
@@ -1712,8 +1583,7 @@ static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
 
 - (void)setCallsHidden:(bool)hidden animated:(bool)animated
 {
-    if (false && !false)
-        hidden = true;
+    
     _callsHidden = hidden;
     [_customTabBar setCallsTabHidden:[self effectiveCallsHidden] animated:animated];
 }

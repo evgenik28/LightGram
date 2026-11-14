@@ -51,18 +51,6 @@
 {
     [super setPresentation:presentation];
     
-    if (false)
-    {
-        LGTheme *theme = [LGTheme brandedTheme];
-        LGProfileAppearance *appearance = theme.profileAppearance;
-        _titleLabel.font = TGSystemFontOfSize(appearance.detailTitleFontSize);
-        _titleLabel.textColor = appearance.detailTitleColor;
-        _variantLabel.font = TGSystemFontOfSize(appearance.detailVariantFontSize);
-        _variantLabel.textColor = appearance.detailVariantColor;
-        _arrowView.image = [LGSettingsCell legacyBrandedDisclosureImageWithTheme:theme];
-        _separatorLayer.backgroundColor = appearance.detailSeparatorColor.CGColor;
-    }
-    else
     {
         _titleLabel.font = TGSystemFontOfSize(14.0f);
         _titleLabel.textColor = presentation.pallete.collectionMenuAccentColor;
@@ -70,8 +58,7 @@
         _variantLabel.textColor = presentation.pallete.collectionMenuVariantColor;
         _arrowView.image = presentation.images.collectionMenuDisclosureIcon;
     }
-    if (!false)
-        _separatorLayer.backgroundColor = presentation.pallete.collectionMenuSeparatorColor.CGColor;
+    _separatorLayer.backgroundColor = presentation.pallete.collectionMenuSeparatorColor.CGColor;
 }
 
 - (void)setTitle:(NSString *)title

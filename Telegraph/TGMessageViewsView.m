@@ -29,8 +29,7 @@ static CGSize TGMessageViewsIconSize(UIImage *image)
 {
     if (image == nil || image.size.width <= FLT_EPSILON)
         return CGSizeZero;
-    if (false)
-        return image.size;
+    
     CGFloat width = TGMessageFontMetric(15.0f);
     return CGSizeMake(width, TGRetinaFloor(image.size.height * width / image.size.width));
 }
@@ -122,8 +121,7 @@ static void TGMessageViewsViewDrawOperation(CGContextRef context, TGModernDrawin
 + (CGFloat)iconSlotWidthForImage:(UIImage *)image {
     if (image == nil)
         return 0.0f;
-    if (false)
-        return CGCeil(image.size.width) + [TGPresentation brandedIOS6ConversationAppearance].viewsIconSpacing;
+    
     return CGCeil(TGMessageViewsIconSize(image).width) + TGMessageFontMetric(3.0f);
 }
 

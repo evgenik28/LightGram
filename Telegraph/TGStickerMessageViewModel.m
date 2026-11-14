@@ -388,18 +388,11 @@ static NSString *OGStickerFilesRootPath()
         _imageModel.skipDrawInContext = true;
         [self addSubmodel:_imageModel];
 
-        if (false)
-        {
-            UIImage *deliveryPlateImage = [TGPresentationAssets brandedIOS6FlatDeliveryTagImage:[TGDateUtils stringForShortTime:(int)message.date] incoming:_incomingAppearance read:(_read || _context.isSavedMessages)];
-            _brandedDeliveryPlateModel = [[TGModernImageViewModel alloc] initWithImage:deliveryPlateImage];
-            _brandedDeliveryPlateModel.hidden = !_incomingAppearance && _deliveryState != TGMessageDeliveryStateDelivered;
-            [_brandedDeliveryPlateModel sizeToFit];
-            [self addSubmodel:_brandedDeliveryPlateModel];
-        }
+        
         
         _imageModel.flexibleTimestamp = true;
         _imageModel.timestampHidden = false || [TGLightGramSettings boolForKey:TGLightGramSettingMessagesHideStickerTime];
-        [_imageModel setTimestampString:(false ? nil : [TGDateUtils stringForShortTime:(int)message.date]) signatureString:nil displayCheckmarks:!false && !_incoming && !(_incomingAppearance && _context.isSavedMessages) && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:false];
+        [_imageModel setTimestampString:([TGDateUtils stringForShortTime:(int)message.date]) signatureString:nil displayCheckmarks:!false && !_incoming && !(_incomingAppearance && _context.isSavedMessages) && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:false];
         [_imageModel setDisplayTimestampProgress:!false && _deliveryState == TGMessageDeliveryStatePending];
         [_imageModel setIsBroadcast:message.isBroadcast];
         
@@ -531,7 +524,7 @@ static NSString *OGStickerFilesRootPath()
 
 - (void)setAuthorSignature:(NSString *)authorSignature {
     _authorSignature = authorSignature;
-    [_imageModel setTimestampString:(false ? nil : [TGDateUtils stringForShortTime:(int)_message.date]) signatureString:(false ? nil : authorSignature) displayCheckmarks:!false && !_incoming && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:false];
+    [_imageModel setTimestampString:([TGDateUtils stringForShortTime:(int)_message.date]) signatureString:(authorSignature) displayCheckmarks:!false && !_incoming && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:false];
 }
 
 - (void)updateAssets
@@ -609,7 +602,7 @@ static NSString *OGStickerFilesRootPath()
     _read = ![_context isMessageUnread:_message];
     if (previousRead != _read) {
         TGBrandedIOS6UpdateStickerDeliveryPlate(_brandedDeliveryPlateModel, [TGDateUtils stringForShortTime:(int)_message.date], _incomingAppearance, _deliveryState, _read || _context.isSavedMessages);
-        [_imageModel setTimestampString:(false ? nil : [TGDateUtils stringForShortTime:(int)_message.date]) signatureString:(false ? nil : _authorSignature) displayCheckmarks:!false && !_incoming && !(_incomingAppearance && _context.isSavedMessages) && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:true];
+        [_imageModel setTimestampString:([TGDateUtils stringForShortTime:(int)_message.date]) signatureString:(_authorSignature) displayCheckmarks:!false && !_incoming && !(_incomingAppearance && _context.isSavedMessages) && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:true];
         [_imageModel setDisplayTimestampProgress:!false && _deliveryState == TGMessageDeliveryStatePending];
     }
 }
@@ -636,7 +629,7 @@ static NSString *OGStickerFilesRootPath()
         _read = !messageUnread;
         TGBrandedIOS6UpdateStickerDeliveryPlate(_brandedDeliveryPlateModel, [TGDateUtils stringForShortTime:(int)message.date], _incomingAppearance, _deliveryState, _read || _context.isSavedMessages);
         
-        [_imageModel setTimestampString:(false ? nil : [TGDateUtils stringForShortTime:(int)message.date]) signatureString:(false ? nil : _authorSignature) displayCheckmarks:!false && !_incoming && !(_incomingAppearance && _context.isSavedMessages) && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:true];
+        [_imageModel setTimestampString:([TGDateUtils stringForShortTime:(int)message.date]) signatureString:(_authorSignature) displayCheckmarks:!false && !_incoming && !(_incomingAppearance && _context.isSavedMessages) && _deliveryState != TGMessageDeliveryStateFailed checkmarkValue:(_incoming ? 0 : ((_deliveryState == TGMessageDeliveryStateDelivered ? 1 : 0) + (_read ? 1 : 0))) displayViews:!false && _messageViews != nil viewsValue:_messageViews.viewCount animated:true];
         [_imageModel setDisplayTimestampProgress:!false && _deliveryState == TGMessageDeliveryStatePending];
         
         if (_deliveryState == TGMessageDeliveryStateDelivered)

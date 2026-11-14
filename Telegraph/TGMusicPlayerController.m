@@ -36,16 +36,7 @@ static char TGMusicPlayerLegacyOverlayKey;
 {
     if (navigationController == nil)
         return;
-    if (false)
-    {
-        for (UIViewController *viewController in navigationController.viewControllers)
-        {
-            if ([viewController isKindOfClass:[TGBrandedMusicPlayerController class]])
-                return;
-        }
-        [navigationController pushViewController:[[TGBrandedMusicPlayerController alloc] init] animated:true];
-        return;
-    }
+    
     
     TGMusicPlayerController *controller = [[TGMusicPlayerController alloc] init];
     controller.presentation = presentation;

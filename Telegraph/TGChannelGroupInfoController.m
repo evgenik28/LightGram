@@ -774,7 +774,7 @@ static const NSUInteger loadMoreMemberCount = 100;
             [self.menuSections addSection:_linkSection];
         }
 
-        if ([TGLightGramSettings boolForKey:TGLightGramSettingGeneralShowPeerIds] && !false)
+        if ([TGLightGramSettings boolForKey:TGLightGramSettingGeneralShowPeerIds])
         {
             TGCollectionMenuSection *identitySection = [[TGCollectionMenuSection alloc] initWithItems:TGLightGramPeerIdentityItems(_conversation.conversationId, _conversation.chatPhotoSmall)];
             identitySection.insets = UIEdgeInsetsMake(17.0f, 0.0f, 0.0f, 0.0f);

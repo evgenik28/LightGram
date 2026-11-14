@@ -326,7 +326,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
         _startSecretChatItem = [[TGUserInfoButtonCollectionItem alloc] initWithTitle:TGLocalized(@"UserInfo.StartSecretChat") action:@selector(startSecretChatPressed)];
         _startSecretChatItem.deselectAutomatically = true;
         _startSecretChatItem.iconName = @"chat-left-quote-fill";
-        _startSecretChatItem.titleColor = false ? [LGTheme brandedTheme].settingsAppearance.titleColor : self.presentation.pallete.collectionMenuAccentColor;
+        _startSecretChatItem.titleColor = self.presentation.pallete.collectionMenuAccentColor;
         
         _normalNotificationsItem = [[TGUserInfoVariantCollectionItem alloc] initWithTitle:TGLocalized(@"GroupInfo.Notifications") variant:nil action:@selector(notificationsPressed)];
         _normalNotificationsItem.deselectAutomatically = true;
@@ -346,9 +346,9 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
         _groupsInCommonItem = [[TGUserInfoVariantCollectionItem alloc] initWithTitle:TGLocalized(@"UserInfo.GroupsInCommon") variant:@"" action:@selector(groupsInCommonPressed)];
         _groupsInCommonItem.iconName = @"person-lines-fill";
         _sharedMediaSection = [[TGCollectionMenuSection alloc] initWithItems:@[_sharedMediaItem, _normalNotificationsItem]];
-        _sharedMediaSection.insets = false ? [LGTheme brandedTheme].profileAppearance.sharedMediaSectionInsets : UIEdgeInsetsMake(22.0f, 0.0f, 0.0f, 0.0f);
+        _sharedMediaSection.insets = UIEdgeInsetsMake(22.0f, 0.0f, 0.0f, 0.0f);
         
-        self.actionsSection.insets = false ? [LGTheme brandedTheme].profileAppearance.compactSectionInsets : UIEdgeInsetsZero;
+        self.actionsSection.insets = UIEdgeInsetsZero;
         
         _deleteContactItem = [[TGUserInfoButtonCollectionItem alloc] initWithTitle:TGLocalized(@"UserInfo.DeleteContact") action:@selector(deleteContactPressed)];
         _deleteContactItem.editing = true;
@@ -359,14 +359,9 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
         _blockUserItem = [[TGUserInfoButtonCollectionItem alloc] initWithTitle:@"" action:@selector(blockUserPressed)];
         _blockUserItem.deselectAutomatically = true;
         _blockUserItem.titleColor = self.presentation.pallete.collectionMenuDestructiveColor;
-        if (false)
-        {
-            LGSettingsAppearance *settingsAppearance = [LGTheme brandedTheme].settingsAppearance;
-            _blockUserItem.centeredTitle = settingsAppearance.blockButtonTitleCentered;
-            _blockUserItem.showsDisclosureIndicator = settingsAppearance.blockButtonShowsDisclosure;
-        }
+        
         _blockUserSection = [[TGCollectionMenuSection alloc] initWithItems:@[_blockUserItem]];
-        _blockUserSection.insets = false ? [LGTheme brandedTheme].profileAppearance.blockSectionInsets : UIEdgeInsetsMake(22.0f, 0.0f, 44.0f, 0.0f);
+        _blockUserSection.insets = UIEdgeInsetsMake(22.0f, 0.0f, 44.0f, 0.0f);
 
         _defaultActionsSectionInsets = self.actionsSection.insets;
         _defaultSharedMediaSectionInsets = _sharedMediaSection.insets;
@@ -468,26 +463,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
         strongSelf->_profileMusicDocuments = documents;
         TGDocumentMediaAttachment *document = documents.count != 0 ? documents[0] : nil;
 
-        if (false)
-        {
-            strongSelf.userInfoItem.profileMusicDocument = document;
-            NSArray *sections = strongSelf.menuSections.sections;
-            for (NSUInteger i = 0; i < sections.count; i++)
-            {
-                TGCollectionMenuSection *section = sections[i];
-                NSUInteger musicIndex = [section.items indexOfObject:strongSelf->_profileMusicItem];
-                if (musicIndex != NSNotFound)
-                {
-                    [strongSelf.menuSections beginRecordingChanges];
-                    [strongSelf.menuSections deleteItemFromSection:i atIndex:musicIndex];
-                    [strongSelf.menuSections commitRecordedChanges:strongSelf.collectionView];
-                    break;
-                }
-            }
-            [strongSelf.collectionLayout invalidateLayout];
-            [strongSelf.collectionView layoutSubviews];
-            return;
-        }
+        
 
         strongSelf.userInfoItem.profileMusicDocument = nil;
         NSArray *sections = strongSelf.menuSections.sections;
@@ -616,7 +592,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
     [super setPresentation:presentation];
     
     LGSettingsAppearance *settingsAppearance = [LGTheme brandedTheme].settingsAppearance;
-    _startSecretChatItem.titleColor = false ? settingsAppearance.titleColor : presentation.pallete.collectionMenuAccentColor;
+    _startSecretChatItem.titleColor = presentation.pallete.collectionMenuAccentColor;
     bool brandedIOS6Style = false;
     _blockUserItem.titleColor = brandedIOS6Style ? settingsAppearance.destructiveColor : presentation.pallete.collectionMenuDestructiveColor;
     _blockUserItem.centeredTitle = brandedIOS6Style && settingsAppearance.blockButtonTitleCentered;
@@ -706,7 +682,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
                 processAbout = !processAbout;
                 processUsername = !processUsername;
             
-            if (processAbout && !_editing && _about.length != 0 && !false)
+            if (processAbout && !_editing && _about.length != 0)
             {
                 TGUserInfoTextCollectionItem *infoItem = [[TGUserInfoTextCollectionItem alloc] init];
                 infoItem.highlightLinks = _user.kind == TGUserKindBot || _user.kind == TGUserKindSmartBot;
@@ -722,7 +698,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
                 [self.menuSections addItemToSection:usernameSectionIndex item:infoItem];
             }
             
-            if (processUsername && !_editing && _user.userName.length != 0 && !false)
+            if (processUsername && !_editing && _user.userName.length != 0)
             {
                 TGUserInfoUsernameCollectionItem *usernameItem = [[TGUserInfoUsernameCollectionItem alloc] initWithLabel:[self usesModernProfileLayout] ? TGLocalized(@"LightGramProfile.LabelUsername") : TGLocalized(@"Profile.Username") username:[[NSString alloc] initWithFormat:@"@%@", _user.userName]];
                 usernameItem.lastInList = ![TGLightGramSettings boolForKey:TGLightGramSettingGeneralShowPeerIds];
@@ -739,7 +715,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
             [self.menuSections addItemToSection:usernameSectionIndex item:birthdayItem];
         }
 
-        if (!_editing && [TGLightGramSettings boolForKey:TGLightGramSettingGeneralShowPeerIds] && !false)
+        if (!_editing && [TGLightGramSettings boolForKey:TGLightGramSettingGeneralShowPeerIds])
         {
             for (TGCollectionItem *item in TGLightGramPeerIdentityItems(_user.uid, _user.photoUrlSmall))
                 [self.menuSections addItemToSection:usernameSectionIndex item:item];
@@ -778,8 +754,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
             [editingPhoneItem setPhone:phoneNumber.number];
             [self.menuSections addItemToSection:phonesSectionIndex item:editingPhoneItem];
         }
-        else if (!false)
-        {
+        else {
             bool hidesOwnPhone = _user.uid == TGTelegraphInstance.clientUserId && [TGLightGramSettings boolForKey:TGLightGramSettingGeneralHidePhone];
             NSString *formattedPhone = hidesOwnPhone ? TGLightGramOwnPhoneDisplay([TGPhoneUtils formatPhone:phoneNumber.number forceInternational:true]) : [TGPhoneUtils formatPhone:phoneNumber.number forceInternational:false];
             if (formattedPhone.length == 0)
@@ -859,63 +834,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
     }
     else
     {
-        if (false && !isCurrentUser)
-        {
-            NSUInteger sharedMediaSectionIndex = [self indexForSection:_sharedMediaSection];
-            if (sharedMediaSectionIndex != NSNotFound)
-                [self.menuSections deleteSection:sharedMediaSectionIndex];
-
-            NSUInteger actionsSectionIndex = [self indexForSection:self.actionsSection];
-            if (actionsSectionIndex == NSNotFound)
-            {
-                NSUInteger phonesSectionIndex = [self indexForSection:self.phonesSection];
-                if (phonesSectionIndex != NSNotFound)
-                    [self.menuSections insertSection:self.actionsSection atIndex:phonesSectionIndex + 1];
-                actionsSectionIndex = [self indexForSection:self.actionsSection];
-            }
-
-            if (actionsSectionIndex != NSNotFound)
-            {
-                for (int i = (int)self.actionsSection.items.count - 1; i >= 0; i--)
-                    [self.menuSections deleteItemFromSection:actionsSectionIndex atIndex:0];
-
-                [self.menuSections addItemToSection:actionsSectionIndex item:_brandedNotificationsItem];
-
-                if (!_withoutCompose)
-                {
-                    TGUserInfoButtonCollectionItem *sendMessageItem = [[TGUserInfoButtonCollectionItem alloc] initWithTitle:TGLocalized(@"UserInfo.SendMessage") action:@selector(sendMessagePressed)];
-                    sendMessageItem.iconName = @"chat-left-dots-fill";
-                    sendMessageItem.transparent = false;
-                    [self.menuSections addItemToSection:actionsSectionIndex item:sendMessageItem];
-                }
-
-                _startSecretChatItem.transparent = false;
-                [self.menuSections addItemToSection:actionsSectionIndex item:_startSecretChatItem];
-
-                if (_supportsCalls)
-                {
-                    TGUserInfoButtonCollectionItem *callItem = [[TGUserInfoButtonCollectionItem alloc] initWithTitle:TGLocalized(@"Conversation.Call") action:@selector(callPressed)];
-                    callItem.iconName = @"telephone-fill";
-                    callItem.deselectAutomatically = true;
-                    callItem.transparent = false;
-                    [self.menuSections addItemToSection:actionsSectionIndex item:callItem];
-                }
-
-                _sharedMediaItem.transparent = false;
-                [self.menuSections addItemToSection:actionsSectionIndex item:_sharedMediaItem];
-                if (_groupsInCommonCount != 0)
-                {
-                    _groupsInCommonItem.transparent = false;
-                    [self.menuSections addItemToSection:actionsSectionIndex item:_groupsInCommonItem];
-                }
-            }
-
-            LGProfileAppearance *profileAppearance = [LGTheme brandedTheme].profileAppearance;
-            self.phonesSection.insets = profileAppearance.compactSectionInsets;
-            self.usernameSection.insets = profileAppearance.compactSectionInsets;
-            self.actionsSection.insets = profileAppearance.actionsSectionInsets;
-        }
-        else if (!isCurrentUser)
+        if (!isCurrentUser)
         {
             NSUInteger notificationSettingsIndex = [self indexForSection:_notificationSettingsSection];
             if (notificationSettingsIndex != NSNotFound)
@@ -928,7 +847,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
                 [_sharedMediaSection deleteItemAtIndex:normalNotificationIndex];
         }
 
-        if (!isCurrentUser && !false)
+        if (!isCurrentUser)
         {
             NSUInteger normalNotificationIndex = [_sharedMediaSection indexOfItem:_normalNotificationsItem];
             if (modernLayout && normalNotificationIndex != NSNotFound)
@@ -988,7 +907,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
         NSUInteger blockUserSectionIndex = [self indexForSection:_blockUserSection];
         if (blockUserSectionIndex == NSNotFound && !isCurrentUser)
         {
-            NSUInteger insertionIndex = false ? actionsSectionIndex : sharedMediaSectionIndex;
+            NSUInteger insertionIndex = sharedMediaSectionIndex;
             if (insertionIndex != NSNotFound)
                 [self.menuSections insertSection:_blockUserSection atIndex:insertionIndex + 1];
         }
@@ -1033,18 +952,11 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
                 if (!isCurrentUser)
                     [self.menuSections addItemToSection:actionsSectionIndex item:_startSecretChatItem];
 
-                if (false && !isCurrentUser && _supportsCalls)
-                {
-                    TGUserInfoButtonCollectionItem *callItem = [[TGUserInfoButtonCollectionItem alloc] initWithTitle:TGLocalized(@"Conversation.Call") action:@selector(callPressed)];
-                    callItem.iconName = @"telephone-fill";
-                    callItem.deselectAutomatically = true;
-                    [self.menuSections addItemToSection:actionsSectionIndex item:callItem];
-                }
+                
             }
         }
     }
     
-    if (!false)
     {
         self.actionsSection.insets = modernLayout && self.actionsSection.items.count == 0 ? UIEdgeInsetsZero : _defaultActionsSectionInsets;
         _sharedMediaSection.insets = modernLayout && _sharedMediaSection.items.count == 0 ? UIEdgeInsetsZero : _defaultSharedMediaSectionInsets;
@@ -1054,7 +966,7 @@ static NSString *TGIOS6UserProfileMusicTitle(TGDocumentMediaAttachment *document
     
     UIEdgeInsets phonesSectionInsets = _defaultPhonesSectionInsets;
     if (_editing)
-        phonesSectionInsets.top += false ? [LGTheme brandedTheme].profileAppearance.editingPhonesTopOffset : 32.0f;
+        phonesSectionInsets.top += 32.0f;
     self.phonesSection.insets = phonesSectionInsets;
     
 #if LG_PLUGINS_AVAILABLE

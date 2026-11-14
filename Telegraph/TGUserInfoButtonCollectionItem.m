@@ -47,7 +47,7 @@
     
     if (!_hasCustomColor)
     {
-        _titleColor = false ? [LGTheme brandedTheme].settingsAppearance.titleColor : presentation.pallete.collectionMenuAccentColor;
+        _titleColor = presentation.pallete.collectionMenuAccentColor;
         [(TGUserInfoButtonCollectionItemView *)self.boundView setTitleColor:_titleColor];
     }
 }
@@ -65,7 +65,7 @@
 
 - (CGSize)itemSizeForContainerSize:(CGSize)containerSize
 {
-    return CGSizeMake(containerSize.width, false ? [LGTheme brandedTheme].profileAppearance.actionRowAppearance.rowHeight : 44.0f);
+    return CGSizeMake(containerSize.width, 44.0f);
 }
 
 - (void)itemSelected:(id)actionTarget

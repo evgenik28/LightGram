@@ -23,7 +23,7 @@
 
 - (CGSize)itemSizeForContainerSize:(CGSize)containerSize
 {
-    if (_subtitle.length != 0 && !false)
+    if (_subtitle.length != 0)
         return CGSizeMake(containerSize.width, 60.0f);
     return CGSizeMake(containerSize.width, false && _brandedSettingsStyle ? 35.0f : (false && _brandedProfileMusic ? 40.0f : 44.0f));
 }

@@ -59,14 +59,13 @@ static UIImage *OGPinnedPanelThemedBackdrop(UIColor *tint)
 
 static UIColor *OGPinnedPanelRuleColor(UIColor *paletteColor, UIColor *regularColor)
 {
-    if (!false)
-        return regularColor;
+    return regularColor;
     return [TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? paletteColor : UIColorRGB(0x6d7884);
 }
 
 static UIColor *OGPinnedPanelFillColor(UIColor *regularColor)
 {
-    return false ? [UIColor clearColor] : regularColor;
+    return regularColor;
 }
 
 static UILabel *OGPinnedMenuLabel(UIFont *font, UIColor *textColor)

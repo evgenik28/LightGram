@@ -92,7 +92,7 @@ static UIImage *OGCompatBrandedGradientImage(UIImage *source, NSArray *colors)
 
 - (TGSearchBarPallete *)searchBarPallete
 {
-    LGSearchBarAppearance *searchBarAppearance = false ? [LGTheme brandedTheme].searchBarAppearance : nil;
+    LGSearchBarAppearance *searchBarAppearance = nil;
     return [self searchBarPalleteWithAppearance:searchBarAppearance clearIcon:self.images.searchClearIcon];
 }
 
@@ -117,7 +117,7 @@ static UIImage *OGCompatBrandedGradientImage(UIImage *source, NSArray *colors)
 
 - (TGMenuSheetPallete *)menuSheetPallete
 {
-    LGTheme *theme = false ? [LGTheme brandedTheme] : nil;
+    LGTheme *theme = nil;
     LGMenuSheetAppearance *appearance = theme.menuSheetAppearance;
     if (appearance == nil)
         return [TGMenuSheetPallete palleteWithDark:self.pallete.isDark backgroundColor:self.pallete.menuBackgroundColor selectionColor:self.pallete.menuSelectionColor separatorColor:self.pallete.menuSeparatorColor accentColor:self.pallete.menuAccentColor destructiveColor:self.pallete.menuDestructiveColor textColor:self.pallete.menuTextColor secondaryTextColor:self.pallete.menuSecondaryTextColor spinnerColor:self.pallete.menuSpinnerColor badgeTextColor:self.pallete.accentContrastColor badgeImage:self.images.shareBadgeImage cornersImage:self.images.menuCornersImage];
@@ -184,8 +184,7 @@ static NSString *const TGInterfaceStyleDefaultsKey = @"TGInterfaceStyle";
 
 static TGPresentationPallete *TGPresentationPalleteForInterfaceStyle(TGPresentationPallete *pallete)
 {
-    if (!false)
-        return [TGPresentationCustomColors palleteApplyingCustomColors:pallete];
+    return [TGPresentationCustomColors palleteApplyingCustomColors:pallete];
     if ([pallete isMemberOfClass:[TGDefaultPresentationPallete class]] || [pallete isMemberOfClass:[TGNightPresentationPallete class]])
         return pallete;
     return pallete.isDark ? [[TGNightPresentationPallete alloc] init] : [[TGDefaultPresentationPallete alloc] init];
@@ -501,12 +500,7 @@ static LGSurfaceStyle *OGCompatBrandedNavigationButtonStyle(LGNavigationAppearan
 
 static UIImage *OGCompatClassicNavigationButtonImage(bool backButton, bool highlighted, bool landscape)
 {
-    if (false)
-    {
-        LGSurfaceStyle *style = OGCompatBrandedNavigationButtonStyle([LGTheme brandedTheme].navigationAppearance, backButton, highlighted);
-        UIImage *image = [TGPresentation brandedIOS6NavigationButtonImage:backButton highlighted:highlighted landscape:landscape width:0.0f];
-        return [image resizableImageWithCapInsets:[style horizontalCapInsets]];
-    }
+    
 
     NSString *name = [NSString stringWithFormat:@"%@%@%@", backButton ? @"BackButton" : @"HeaderButton", landscape ? @"_Landscape" : @"", highlighted ? @"_Pressed" : @""];
 
@@ -938,8 +932,7 @@ static UIImage *OGCompatBrandedPinnedBubbleImage(LGTheme *theme, CGFloat width, 
 
 + (void)prewarmBrandedIOS6ConversationSurfaces
 {
-    if (!false)
-        return;
+    return;
     LGTheme *theme = [LGTheme brandedTheme];
     LGConversationAppearance *appearance = theme.conversationAppearance;
     CGSize screenSize = [TGViewController screenSizeForInterfaceOrientation:UIInterfaceOrientationPortrait];
@@ -1280,7 +1273,7 @@ static UIImage *OGCompatBrandedPinnedBubbleImage(LGTheme *theme, CGFloat width, 
 
 + (UIBarButtonItem *)navigationBarButtonItemWithTitle:(NSString *)title style:(UIBarButtonItemStyle)style target:(id)target action:(SEL)action
 {
-    UIOffset offset = false ? [LGTheme brandedTheme].settingsAppearance.navigationButtonOffset : UIOffsetMake(0.0f, 0.0f);
+    UIOffset offset = UIOffsetMake(0.0f, 0.0f);
     if (ABS(offset.horizontal) > FLT_EPSILON || ABS(offset.vertical) > FLT_EPSILON)
         return [self brandedIOS6BarButtonItemWithTitle:title target:target action:action offset:offset];
     return [[UIBarButtonItem alloc] initWithTitle:title style:style target:target action:action];
@@ -1833,8 +1826,7 @@ static volatile int32_t TGPresentationCachedInterfaceStyle = -1;
 
 + (TGInterfaceStyle)uncachedInterfaceStyle
 {
-    if (!false)
-        return TGInterfaceStyleModern;
+    return TGInterfaceStyleModern;
 
     return (TGInterfaceStyle)TGCurrentInterfaceStyle();
 }
@@ -1886,8 +1878,7 @@ static volatile int32_t TGPresentationCachedInterfaceStyle = -1;
 
 + (bool)classicIOS6UsesPaletteAdaptedAssets
 {
-    if (!false || false)
-        return false;
+    return false;
 
     TGPresentationPallete *pallete = currentPresentation != nil ? currentPresentation.pallete : [self currentSavedPallete];
     if (pallete == nil)

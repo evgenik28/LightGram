@@ -70,10 +70,7 @@
         self.backgroundColor = [UIColor blackColor];
         self.clipsToBounds = true;
         
-        if (false && iosMajorVersion() >= 8)
-            _wrapperView = [[TGCameraPreviewLayerWrapperView alloc] init];
-        else
-            _wrapperView = [[TGCameraLegacyPreviewLayerWrapperView alloc] init];
+        _wrapperView = [[TGCameraLegacyPreviewLayerWrapperView alloc] init];
         [self addSubview:_wrapperView];
         
         _wrapperView.videoGravity = AVLayerVideoGravityResizeAspectFill;

@@ -67,9 +67,7 @@
     bool classicDarkStyle = classicThemeStyle && presentation.pallete.isDark;
     _titleLabel.textColor = classicThemeStyle && !classicDarkStyle ? UIColorRGB(0x111111) : presentation.pallete.collectionMenuTextColor;
     UIImage *disclosureImage = classicThemeStyle ? [TGPresentation classicIOS6ResourceImage:@"MenuDisclosureIndicator"] : presentation.images.collectionMenuDisclosureIcon;
-    if (false)
-        disclosureImage = [LGSettingsCell legacyBrandedDisclosureImageWithTheme:[LGTheme brandedTheme]] ?: disclosureImage;
-    else if (classicDarkStyle)
+    if (classicDarkStyle)
         disclosureImage = [TGPresentation classicIOS6ThemedImage:disclosureImage tintColor:presentation.pallete.collectionMenuAccessoryColor alpha:0.82f];
     [self setDisclosureImage:disclosureImage];
     
@@ -77,28 +75,6 @@
     _badgeView.image = self.presentation.images.collectionMenuBadgeImage;
     _subtitleLabel.textColor = presentation.pallete.collectionMenuVariantColor;
 
-    if (false && _brandedSettingsStyle)
-    {
-        LGTheme *theme = [LGTheme brandedTheme];
-        [LGSettingsCell applyLegacyBrandedTitleStyleWithTheme:theme titleLabel:_titleLabel];
-        _iconView.image = _brandedSettingsIconName.length == 0 ? _icon : [TGPresentation brandedIOS6ResourceImage:_brandedSettingsIconName];
-        if (_iconView.image != nil)
-            [LGSettingsCell applyLegacyBrandedIconStyleWithTheme:theme iconView:_iconView];
-        UIImage *brandedDisclosureImage = [LGSettingsCell legacyBrandedDisclosureImageWithTheme:theme];
-        if (brandedDisclosureImage != nil)
-            [self setDisclosureImage:brandedDisclosureImage];
-        _disclosureIndicator.hidden = false;
-    }
-    else if (false && _brandedProfileMusic)
-    {
-        _titleLabel.font = TGSystemFontOfSize(15.0f);
-        _titleLabel.textColor = UIColorRGB(0x111111);
-        UIImage *brandedDisclosureImage = presentation.images.collectionMenuDisclosureIcon;
-        if (brandedDisclosureImage != nil)
-            [self setDisclosureImage:brandedDisclosureImage];
-        _disclosureIndicator.hidden = false;
-    }
-    else
     {
         _titleLabel.font = TGSystemFontOfSize(17.0f);
         _disclosureIndicator.hidden = _hideArrow;
@@ -211,33 +187,14 @@
     
     CGRect bounds = self.bounds;
 
-    if (false && _brandedSettingsStyle)
-    {
-        _iconView.hidden = _iconView.image == nil;
-        _disclosureIndicator.hidden = false;
-        [LGSettingsCell applyLegacyBrandedStyleWithTheme:[LGTheme brandedTheme] titleLabel:_titleLabel iconView:_iconView disclosureView:_disclosureIndicator bounds:bounds safeAreaInsets:self.safeAreaInset];
-        _badgeView.hidden = true;
-        _badgeLabel.hidden = true;
-        return;
-    }
+    
 
-    if (false && _brandedProfileMusic)
-    {
-        _iconView.hidden = true;
-        _titleLabel.font = TGSystemFontOfSize(15.0f);
-        CGFloat titleHeight = MAX(22.0f, ceilf(LGPlatformFontLineHeight(_titleLabel.font)));
-        _titleLabel.frame = CGRectMake(21.0f + self.safeAreaInset.left, CGFloor((bounds.size.height - titleHeight) / 2.0f), bounds.size.width - 66.0f - self.safeAreaInset.left - self.safeAreaInset.right, titleHeight);
-        _disclosureIndicator.hidden = false;
-        _disclosureIndicator.frame = CGRectMake(bounds.size.width - _disclosureIndicator.frame.size.width - 27.0f - self.safeAreaInset.right, CGFloor((bounds.size.height - _disclosureIndicator.frame.size.height) / 2.0f), _disclosureIndicator.frame.size.width, _disclosureIndicator.frame.size.height);
-        _badgeView.hidden = true;
-        _badgeLabel.hidden = true;
-        return;
-    }
+    
 
     _iconView.hidden = false;
     _badgeView.hidden = false;
     _badgeLabel.hidden = false;
-    CGFloat classicInset = false ? 10.0f : 0.0f;
+    CGFloat classicInset = 0.0f;
     
     if (_iconView.image != nil)
     {

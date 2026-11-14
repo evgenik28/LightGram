@@ -146,7 +146,7 @@
     CGRect bounds = self.bounds;
     
     CGFloat separatorHeight = TGScreenPixel;
-    CGFloat separatorInset = (false ? 0.0f : 15.0f) + self.safeAreaInset.left;
+    CGFloat separatorInset = (15.0f) + self.safeAreaInset.left;
     bool brandedIOS6Style = false;
     _separatorLayer.hidden = brandedIOS6Style && [LGTheme brandedTheme].profileAppearance.actionRowAppearance.hidesInlineSeparator;
     _separatorLayer.frame = CGRectMake(separatorInset, bounds.size.height - separatorHeight, bounds.size.width - separatorInset, separatorHeight);

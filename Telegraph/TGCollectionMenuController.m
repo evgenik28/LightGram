@@ -96,8 +96,7 @@ TGCollectionMenuLayoutDelegateFlowLayout
 {
     if ([self usesBrandedScreenBackground])
         return [UIColor clearColor];
-    if (false)
-        return [LGSettingsCell legacyCollectionBackgroundColorWithTheme:[LGTheme brandedTheme]];
+    
     return false && !_presentation.pallete.isDark ? TGCollectionMenuClassicBackgroundColor() : _presentation.pallete.collectionMenuBackgroundColor;
 }
 

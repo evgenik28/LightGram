@@ -18,17 +18,6 @@ static NSString *const TGMessageReactionPaid = @"★";
 TGMessageReactionsMetrics TGMessageReactionsCurrentMetrics(void)
 {
     TGMessageReactionsMetrics metrics;
-    if (false)
-    {
-        LGConversationAppearance *appearance = [TGPresentation brandedIOS6ConversationAppearance];
-        metrics.itemSpacing = appearance.reactionsSpacing;
-        metrics.lineSpacing = appearance.reactionsSpacing;
-        metrics.topSpacing = appearance.reactionsTopSpacing;
-        metrics.timeSpacing = appearance.reactionsTimeSpacing;
-        metrics.timeRowSpacing = appearance.reactionsSpacing;
-        metrics.leadingOffset = 0.0f;
-    }
-    else
     {
         metrics.itemSpacing = TGMessageFontMetric(4.0f);
         metrics.lineSpacing = TGMessageFontMetric(4.0f);

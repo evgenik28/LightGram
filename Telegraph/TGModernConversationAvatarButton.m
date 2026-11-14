@@ -66,15 +66,7 @@ static const CGFloat TGModernConversationAvatarDefaultTopInset = 4.0f;
         _iconView = [[UIImageView alloc] init];
         [_avatarView addSubview:_iconView];
         
-        if (false)
-        {
-            _avatarView.layer.cornerRadius = [TGPresentation brandedIOS6ConversationAppearance].avatarCornerRadius;
-            _brandedOverlayView = [[UIImageView alloc] init];
-            _brandedOverlayView.userInteractionEnabled = false;
-            [self addSubview:_brandedOverlayView];
-        }
-        else
-            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(lightgramSettingsChanged:) name:TGLightGramSettingsDidChangeNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(lightgramSettingsChanged:) name:TGLightGramSettingsDidChangeNotification object:nil];
     }
     return self;
 }
@@ -92,7 +84,7 @@ static const CGFloat TGModernConversationAvatarDefaultTopInset = 4.0f;
 
 - (void)updateAvatarShape
 {
-    if (_avatarView == nil || false)
+    if (_avatarView == nil)
         return;
     bool round = [TGLightGramSettings boolForKey:TGLightGramSettingAppearanceRoundChatAvatar];
     _avatarView.layer.cornerRadius = round ? _avatarView.bounds.size.width / 2.0f : 0.0f;
@@ -122,8 +114,7 @@ static const CGFloat TGModernConversationAvatarDefaultTopInset = 4.0f;
 
 - (CGFloat)avatarSide
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].avatarSize;
+    
     return TGModernConversationAvatarDefaultSize;
 }
 
@@ -321,15 +312,7 @@ static const CGFloat TGModernConversationAvatarDefaultTopInset = 4.0f;
         
         origin = CGPointMake(rtlOffset + _horizontalOffset, -17 + _verticalOffset);
         
-        if (false)
-        {
-            LGConversationAppearance *appearance = [TGPresentation brandedIOS6ConversationAppearance];
-            origin.x += TGModernConversationAvatarDefaultSize + TGModernConversationAvatarDefaultRightInset - appearance.avatarRightInset - appearance.avatarSize;
-            origin.y += appearance.avatarTopInset - TGModernConversationAvatarDefaultTopInset;
-            _avatarView.frame = CGRectMake(origin.x, origin.y, appearance.avatarSize, appearance.avatarSize);
-        }
-        else
-            _avatarView.frame = CGRectMake(origin.x, origin.y, TGModernConversationAvatarDefaultSize, TGModernConversationAvatarDefaultSize);
+        _avatarView.frame = CGRectMake(origin.x, origin.y, TGModernConversationAvatarDefaultSize, TGModernConversationAvatarDefaultSize);
         
         if (TGAppDelegateInstance.rootController.isRTL) {
             CGRect frame = _avatarView.frame;

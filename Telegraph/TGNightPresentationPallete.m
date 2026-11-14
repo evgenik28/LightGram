@@ -368,8 +368,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)chatIncomingTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].messageTextColor;
+    
     return [UIColor whiteColor];
 }
 
@@ -390,8 +389,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)chatIncomingDateColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return [self chatIncomingSubtextColor];
 }
 
@@ -447,8 +445,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)chatOutgoingTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].messageTextColor;
+    
     return [UIColor whiteColor];
 }
 
@@ -469,8 +466,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)chatOutgoingDateColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return [self chatOutgoingSubtextColor];
 }
 
@@ -611,8 +607,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)chatChecksColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return [self chatOutgoingDateColor];
 }
 
@@ -648,15 +643,13 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)chatInputTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldTextColor;
+    
     return [UIColor whiteColor];
 }
 
 - (UIColor *)chatInputPlaceholderColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldPlaceholderColor;
+    
     return UIColorRGB(0x7b7b7b);
 }
 
@@ -802,22 +795,19 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)collectionMenuBackgroundColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].collectionBackgroundColor;
+    
     return [self backgroundColor];
 }
 
 - (UIColor *)collectionMenuCellBackgroundColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].groupedFillColor;
+    
     return [self barBackgroundColor];
 }
 
 - (UIColor *)collectionMenuCellSelectionColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].groupedSelectedFillColor;
+    
     uint32_t surface = TGNightPresentationSurfaceRGB();
     uint32_t selection = (surface & 0xff) <= 0x16 ? TGNightPresentationLightened(surface, 0x0e) : 0x101010;
     return UIColorRGB(selection);
@@ -825,8 +815,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)collectionMenuTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].titleColor;
+    
     return [UIColor whiteColor];
 }
 
@@ -842,8 +831,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)collectionMenuAccentColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].accentColor;
+    
     return [self accentColor];
 }
 
@@ -864,8 +852,7 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)collectionMenuCommentColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].commentColor;
+    
     return [self secondaryTextColor];
 }
 
@@ -881,15 +868,13 @@ static uint32_t TGNightPresentationLightened(uint32_t rgb, uint32_t amount)
 
 - (UIColor *)collectionMenuSwitchColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].switchColor;
+    
     return [self accentColor];
 }
 
 - (UIColor *)collectionMenuCheckColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].accentColor;
+    
     return [self accentColor];
 }
 

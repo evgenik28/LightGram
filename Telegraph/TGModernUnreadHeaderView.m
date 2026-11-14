@@ -46,15 +46,6 @@ static UIImage *OGCompatUnreadHeaderGlossImage(void)
 
 static void OGCompatUnreadHeaderStyleViews(UIImageView *backgroundView, UILabel *label, TGPresentation *presentation)
 {
-    if (false)
-    {
-        backgroundView.image = OGCompatUnreadHeaderGlossImage();
-        label.textColor = UIColorRGB(0x43576b);
-        label.font = TGBoldSystemFontOfSize(13.0f);
-        label.shadowColor = UIColorRGBA(0xffffff, 0.9f);
-        label.shadowOffset = CGSizeMake(0.0f, 1.0f);
-    }
-    else
     {
         backgroundView.image = presentation.images.chatUnreadBackground;
         label.textColor = presentation.pallete.chatUnreadTextColor;
@@ -66,8 +57,7 @@ static void OGCompatUnreadHeaderStyleViews(UIImageView *backgroundView, UILabel 
 
 static LGConversationAppearance *TGBrandedUnreadHeaderAppearance(void)
 {
-    if (!false)
-        return nil;
+    return nil;
     LGConversationAppearance *appearance = [TGPresentation brandedIOS6ConversationAppearance];
     return appearance.unreadHeaderSurfaceStyle != nil ? appearance : nil;
 }

@@ -33,8 +33,7 @@ static UIImage *TGCollectionItemViewClassicIOS6Image(int itemPosition, bool sele
     if (itemPosition == 0)
         return nil;
 
-    if (false)
-        return [LGSettingsCell legacyGroupedBackgroundImageForPosition:TGCollectionItemViewGroupedPosition(itemPosition) selected:selected theme:[LGTheme brandedTheme]];
+    
 
     NSString *name = nil;
     if ((itemPosition & TGCollectionItemViewPositionFirstInBlock) && (itemPosition & TGCollectionItemViewPositionLastInBlock))
@@ -161,9 +160,8 @@ static UIImage *TGCollectionItemViewClassicIOS6Image(int itemPosition, bool sele
 - (CGRect)classicIOS6GroupedFrame
 {
     CGSize viewSize = self.bounds.size;
-    if (!false || _itemPosition == 0)
-        return CGRectMake(0.0f, 0.0f, viewSize.width, viewSize.height);
-    CGFloat defaultHorizontalInset = false ? [self effectiveBrandedGroupedAppearance].groupedHorizontalInset : 9.0f;
+    return CGRectMake(0.0f, 0.0f, viewSize.width, viewSize.height);
+    CGFloat defaultHorizontalInset = 9.0f;
     CGFloat horizontalInset = _classicIOS6HorizontalInset > FLT_EPSILON ? _classicIOS6HorizontalInset : defaultHorizontalInset;
     CGFloat leftInset = horizontalInset + self.safeAreaInset.left;
     CGFloat rightInset = horizontalInset + self.safeAreaInset.right;
@@ -313,28 +311,7 @@ static void adjustSelectedBackgroundViewFrame(CGSize viewSize, int positionMask,
         stripeHeight = TGScreenPixel;
     });
     
-    if (false && _itemPosition != 0)
-    {
-        CGRect groupedFrame = [self classicIOS6GroupedFrame];
-        CGFloat leftInset = groupedFrame.origin.x;
-        CGFloat width = groupedFrame.size.width;
-        if ([self usesBrandedGroupedSurface])
-        {
-            LGTheme *theme = [LGTheme brandedTheme];
-            LGSettingsAppearance *appearance = [self effectiveBrandedGroupedAppearance];
-            LGGroupedCellPosition position = TGCollectionItemViewGroupedPosition(_itemPosition);
-            UIEdgeInsets outsets = UIEdgeInsetsZero;
-            _classicBackgroundImageView.image = [LGSettingsCell legacyGroupedSurfaceImageForPosition:position selected:false size:CGSizeMake(width, viewSize.height) appearance:appearance theme:theme outsets:&outsets];
-            _classicBackgroundImageView.frame = CGRectMake(leftInset - outsets.left, -outsets.top, width + outsets.left + outsets.right, viewSize.height + outsets.top + outsets.bottom);
-            CGFloat selectedHeight = self.selectedBackgroundView.bounds.size.height;
-            _classicIOS6SelectedBackgroundImageView.image = self.highlightDisabled ? nil : [LGSettingsCell legacyGroupedSurfaceImageForPosition:position selected:true size:CGSizeMake(width, selectedHeight) appearance:appearance theme:theme outsets:&outsets];
-            _classicIOS6SelectedBackgroundImageView.frame = CGRectMake(leftInset - outsets.left, -outsets.top, width + outsets.left + outsets.right, selectedHeight + outsets.top + outsets.bottom);
-            return;
-        }
-        _classicBackgroundImageView.frame = CGRectMake(leftInset, 0.0f, width, viewSize.height);
-        _classicIOS6SelectedBackgroundImageView.frame = CGRectMake(leftInset, 0.0f, width, self.selectedBackgroundView.bounds.size.height);
-        return;
-    }
+    
 
     CGFloat separatorInset = !_ignoreSeparatorInset ? _separatorInset + self.safeAreaInset.left : 0.0f;
     

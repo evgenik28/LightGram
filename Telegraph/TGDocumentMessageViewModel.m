@@ -595,7 +595,7 @@ static NSString *TGDocumentMessagePreviewUri(TGDocumentMediaAttachment *document
         previewSize.height += 14.0f;
     }
     
-    CGFloat brandedBottomInset = false ? 4.0f : 0.0f;
+    CGFloat brandedBottomInset = 0.0f;
     return CGSizeMake(MAX(textSize.width, MAX(nameWidth, sizeWidth) + previewSize.width + 14.0f), previewSize.height + 10.0f + textSize.height + brandedBottomInset);
 }
 

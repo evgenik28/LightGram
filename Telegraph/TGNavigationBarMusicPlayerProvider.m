@@ -9,7 +9,7 @@
 
 - (CGFloat)musicPlayerHeight
 {
-    return false ? 44.0f : 37.0f;
+    return 37.0f;
 }
 
 - (UIView<TGNavigationBarMusicPlayerView> *)makeMusicPlayerView:(UINavigationController *)navigationController {

@@ -43,8 +43,7 @@
 
 - (CGSize)itemSizeForContainerSize:(CGSize)containerSize
 {
-    if (false && _brandedSettingsStyle)
-        return CGSizeMake(containerSize.width, 35.0f);
+    
     return CGSizeMake(containerSize.width, TGCollectionItemVariantHeightWithDescription(_descriptionText, containerSize.width));
 }
 

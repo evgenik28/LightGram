@@ -175,7 +175,7 @@ static UIImage *TGCallCellBrandedIOS6InfoIcon(void)
             self.contentView.superview.clipsToBounds = false;
         }
         
-        if (iosMajorVersion() <= 6 || false) {
+        if (iosMajorVersion() <= 6) {
             _separatorLayer = [[CALayer alloc] init];
             _separatorLayer.backgroundColor = TGSeparatorColor().CGColor;
             [self.layer addSublayer:_separatorLayer];
@@ -209,40 +209,28 @@ static UIImage *TGCallCellBrandedIOS6InfoIcon(void)
 #endif
         
         _nameLabel = [[UILabel alloc] init];
-        _nameLabel.font = false ? TGBoldSystemFontOfSize(15.0f) : TGSystemFontOfSize(17.0f);
+        _nameLabel.font = TGSystemFontOfSize(17.0f);
         _nameLabel.textColor = UIColorRGB(0x000000);
-        if (false)
-        {
-            _nameLabel.shadowColor = UIColorRGBA(0xffffff, 0.85f);
-            _nameLabel.shadowOffset = CGSizeMake(0.0f, 1.0f);
-        }
+        
         [_wrapView addSubview:_nameLabel];
         
-        CGFloat subtitleFontSize = false ? 11.0f : 14.0f;
+        CGFloat subtitleFontSize = 14.0f;
         
         _subLabel = [[UILabel alloc] init];
         _subLabel.font = TGSystemFontOfSize(subtitleFontSize);
         _subLabel.textColor = UIColorRGB(0x8e8e93);
-        if (false)
-        {
-            _subLabel.shadowColor = UIColorRGBA(0xffffff, 0.9f);
-            _subLabel.shadowOffset = CGSizeMake(0.0f, 1.0f);
-        }
+        
         [_wrapView addSubview:_subLabel];
         
         _dateLabel = [[UILabel alloc] init];
         _dateLabel.font = TGSystemFontOfSize(subtitleFontSize);
         _dateLabel.textColor = UIColorRGB(0x8e8e93);
-        if (false)
-        {
-            _dateLabel.shadowColor = UIColorRGBA(0xffffff, 0.9f);
-            _dateLabel.shadowOffset = CGSizeMake(0.0f, 1.0f);
-        }
+        
         [_wrapView addSubview:_dateLabel];
         
         _infoButton = [[TGModernButton alloc] init];
         _infoButton.adjustsImageWhenHighlighted = false;
-        [_infoButton setImage:false ? TGCallCellBrandedIOS6InfoIcon() : TGImageNamed(@"CallInfoIcon") forState:UIControlStateNormal];
+        [_infoButton setImage:TGImageNamed(@"CallInfoIcon") forState:UIControlStateNormal];
         [_infoButton addTarget:self action:@selector(infoButtonPressed) forControlEvents:UIControlEventTouchUpInside];
         [_wrapView addSubview:_infoButton];
     }
@@ -371,25 +359,13 @@ static UIImage *TGCallCellBrandedIOS6InfoIcon(void)
     _dateLabel.text = [TGDateUtils stringForMessageListDate:(int)message.date];
     [_dateLabel sizeToFit];
     
-    if (false)
-    {
-        TGMessage *callMessage = group.message;
-        int reason = [callMessage.actionInfo.actionData[@"reason"] intValue];
-        bool missed = group.failed || reason == TGCallDiscardReasonMissed || reason == TGCallDiscardReasonBusy;
-        NSString *iconName = missed ? @"telephone-x-fill" : (group.outgoing ? @"telephone-outbound-fill" : @"telephone-inbound-fill");
-        _typeIcon.hidden = false;
-        _typeIcon.contentMode = UIViewContentModeScaleAspectFit;
-        _typeIcon.image = TGCallCellBrandedIOS6TypeIcon(iconName, missed);
-        LGPlatformApplyViewShadow(_typeIcon, [UIColor blackColor], 0.28f, 0.5f, CGSizeMake(0.0f, 1.0f));
-    }
-    else
     {
         _typeIcon.hidden = !group.outgoing;
     }
     _subLabel.text = group.displayType;
     [_subLabel sizeToFit];
     
-    CGFloat diameter = false ? 45.0f : (TGIsPad() ? 45.0f : 40.0f);
+    CGFloat diameter = (TGIsPad() ? 45.0f : 40.0f);
     
     UIImage *placeholder = [self.presentation.images avatarPlaceholderWithDiameter:diameter];    
     bool animateState = false;
@@ -401,10 +377,10 @@ static UIImage *TGCallCellBrandedIOS6InfoIcon(void)
             if (animateState)
             {
                 UIImage *currentImage = [_avatarView currentImage];
-                [_avatarView loadImage:peer.photoFullUrlSmall filter:false ? @"scale:45x45" : (TGIsPad() ? @"circle:45x45" : @"circle:40x40") placeholder:(currentImage != nil ? currentImage : placeholder) forceFade:true];
+                [_avatarView loadImage:peer.photoFullUrlSmall filter:(TGIsPad() ? @"circle:45x45" : @"circle:40x40") placeholder:(currentImage != nil ? currentImage : placeholder) forceFade:true];
             }
             else
-                [_avatarView loadImage:peer.photoFullUrlSmall filter:false ? @"scale:45x45" : (TGIsPad() ? @"circle:45x45" : @"circle:40x40") placeholder:placeholder];
+                [_avatarView loadImage:peer.photoFullUrlSmall filter:(TGIsPad() ? @"circle:45x45" : @"circle:40x40") placeholder:placeholder];
         }
     }
     else
@@ -412,27 +388,7 @@ static UIImage *TGCallCellBrandedIOS6InfoIcon(void)
         [_avatarView loadUserPlaceholderWithSize:CGSizeMake(diameter, diameter) uid:peer.uid firstName:peer.firstName lastName:peer.lastName placeholder:placeholder];
     }
 
-    if (false)
-    {
-        _avatarView.clipsToBounds = true;
-        _avatarView.layer.cornerRadius = 7.0f;
-        _avatarView.layer.borderWidth = 1.0f;
-        _avatarView.layer.borderColor = UIColorRGBA(0x686868, 0.85f).CGColor;
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 30200
-        _avatarShadowView.hidden = false;
-        _avatarShadowView.backgroundColor = UIColorRGB(0xfcfcfc);
-        _avatarShadowView.layer.cornerRadius = 7.0f;
-        LGPlatformApplyViewShadow(_avatarShadowView, [UIColor blackColor], 0.45f, 1.5f, CGSizeMake(0.0f, 1.5f));
-#else
-        _avatarShadowLayer.hidden = false;
-        _avatarShadowLayer.backgroundColor = UIColorRGB(0xfcfcfc).CGColor;
-        _avatarShadowLayer.cornerRadius = 7.0f;
-        _avatarShadowLayer.shadowColor = [UIColor blackColor].CGColor;
-        _avatarShadowLayer.shadowOpacity = 0.45f;
-        _avatarShadowLayer.shadowRadius = 1.5f;
-        _avatarShadowLayer.shadowOffset = CGSizeMake(0.0f, 1.5f);
-#endif
-    }
+    
 
     [self setNeedsLayout];
 }
@@ -510,35 +466,7 @@ static UIImage *TGCallCellBrandedIOS6InfoIcon(void)
     
     _wrapView.frame = CGRectMake(contentOffset, 0.0f, size.width, size.height);
 
-    if (false)
-    {
-        CGFloat separatorHeight = 1.0f;
-        _separatorLayer.frame = CGRectMake(0.0f, self.frame.size.height - separatorHeight, self.frame.size.width, separatorHeight);
-        _avatarView.frame = CGRectMake(7.0f, 6.0f, 45.0f, 45.0f);
-        _avatarView.clipsToBounds = true;
-        _avatarView.layer.cornerRadius = 7.0f;
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 30200
-        _avatarShadowView.frame = _avatarView.frame;
-#else
-        _avatarShadowLayer.frame = _avatarView.frame;
-        _avatarShadowLayer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_avatarShadowLayer.bounds cornerRadius:7.0f].CGPath;
-#endif
-        _nameLabel.font = TGBoldSystemFontOfSize(15.0f);
-        _subLabel.font = TGSystemFontOfSize(11.0f);
-        _dateLabel.font = TGSystemFontOfSize(11.0f);
-        [_dateLabel sizeToFit];
-        CGFloat left = 57.0f;
-        _dateLabel.frame = CGRectMake(size.width - _dateLabel.frame.size.width - 10.0f, 8.0f, _dateLabel.frame.size.width, 15.0f);
-        CGSize nameSize = [_nameLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 20.0f)];
-        CGFloat maximumNameWidth = MAX(0.0f, CGRectGetMinX(_dateLabel.frame) - left - 31.0f);
-        CGFloat nameWidth = MIN(CGCeil(nameSize.width), maximumNameWidth);
-        _nameLabel.frame = CGRectMake(left, 5.0f, nameWidth, 20.0f);
-        _typeIcon.frame = CGRectMake(CGRectGetMaxX(_nameLabel.frame) + 4.0f, 7.0f, 16.0f, 16.0f);
-        _subLabel.frame = CGRectMake(left, 31.0f, MAX(0.0f, size.width - left - 43.0f), 16.0f);
-        _infoButton.frame = CGRectMake(size.width - 39.0f, 24.0f, 31.0f, 31.0f);
-        LGPlatformApplyViewShadow(_infoButton.imageView, [UIColor blackColor], 0.35f, 0.75f, CGSizeMake(0.0f, 1.0f));
-        return;
-    }
+    
     
     CGFloat separatorHeight = TGScreenPixel;
     CGFloat separatorInset = 86.0f;

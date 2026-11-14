@@ -193,7 +193,7 @@
     }
 
     CGFloat switchY = CGFloor((bounds.size.height - switchSize.height) / 2.0f);
-    CGFloat classicInset = false ? 10.0f : 0.0f;
+    CGFloat classicInset = 0.0f;
     _switchView.frame = CGRectMake(bounds.size.width - switchSize.width - 20.0f - self.safeAreaInset.right, switchY, switchSize.width, switchSize.height);
     CGFloat titleX = 15.0f + classicInset + self.safeAreaInset.left;
     CGFloat titleHeight = MAX(24.0f, ceilf(LGPlatformFontLineHeight(_titleLabel.font)));

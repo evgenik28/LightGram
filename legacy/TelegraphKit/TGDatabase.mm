@@ -7704,9 +7704,7 @@ static NSMutableDictionary *transliterationPartsCache()
         return value;
     
     NSData *data = [self customProperty:@"unreadChatsCount"];
-    if (false && data.length >= 4) {
-        [data getBytes:&value length:4];
-    } else {
+    {
         return INT_MIN;
     }
     
@@ -7749,9 +7747,7 @@ static NSMutableDictionary *transliterationPartsCache()
         return value;
     
     NSData *data = [self customProperty:@"unreadChannelsCount"];
-    if (false && data.length >= 4) {
-        [data getBytes:&value length:4];
-    } else {
+    {
         return INT_MIN;
     }
     
@@ -7818,9 +7814,7 @@ static NSMutableDictionary *transliterationPartsCache()
         return value;
     
     NSData *data = [self customProperty:@"unreadMarksCount"];
-    if (false && data.length >= 4) {
-        [data getBytes:&value length:4];
-    } else {
+    {
         return INT_MIN;
     }
     

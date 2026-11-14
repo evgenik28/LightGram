@@ -13,20 +13,19 @@ static CGFloat rightButtonWidth;
 
 static CGFloat TGDialogListEditingLeftButtonWidth(void)
 {
-    return false ? 65.0f : leftButtonWidth;
+    return leftButtonWidth;
 }
 
 static CGFloat TGDialogListEditingRightButtonWidth(void)
 {
-    return false ? 65.0f : rightButtonWidth;
+    return rightButtonWidth;
 }
 
 
 static CGFloat TGDialogListEditingRightRevealWidth(NSUInteger count, CGFloat boundsWidth)
 {
     CGFloat contentWidth = count * TGDialogListEditingRightButtonWidth();
-    if (!false)
-        return contentWidth;
+    return contentWidth;
     return MIN(contentWidth, MAX(0.0f, boundsWidth - 74.0f));
 }
 
@@ -41,34 +40,7 @@ static UIPanGestureRecognizer *TGDialogListScrollViewPanGestureRecognizer(UIScro
 }
 
 static NSString *buttonTitleForType(TGDialogListCellEditingControlButton button) {
-    if (false)
-    {
-        switch (button)
-        {
-            case TGDialogListCellEditingControlsDelete:
-                return @"Delete";
-            case TGDialogListCellEditingControlsPin:
-                return @"Pin";
-            case TGDialogListCellEditingControlsUnpin:
-                return @"Unpin";
-            case TGDialogListCellEditingControlsMute:
-                return @"Mute";
-            case TGDialogListCellEditingControlsUnmute:
-                return @"Unmute";
-            case TGDialogListCellEditingControlsRead:
-                return @"Read";
-            case TGDialogListCellEditingControlsUnread:
-                return @"Unread";
-            case TGDialogListCellEditingControlsArchive:
-                return @"Archive";
-            case TGDialogListCellEditingControlsUnarchive:
-                return @"Chats";
-            case TGDialogListCellEditingControlsCommunity:
-                return @"Community";
-            default:
-                break;
-        }
-    }
+    
     switch (button) {
         case TGDialogListCellEditingControlsDelete:
             return TGLocalized(@"Common.Delete");
@@ -247,34 +219,7 @@ static UIImage *TGDialogListEditingMessageIcon(TGDialogListCellEditingControlBut
 }
 
 static UIImage *buttonImageForType(TGDialogListCellEditingControlButton button, TGPresentation *presentation) {
-    if (false)
-    {
-        switch (button)
-        {
-            case TGDialogListCellEditingControlsDelete:
-                return TGDialogListEditingBrandedIcon(@"trash-fill");
-            case TGDialogListCellEditingControlsPin:
-            case TGDialogListCellEditingControlsUnpin:
-                return TGDialogListEditingBrandedIcon(@"pin-angle-fill-18");
-            case TGDialogListCellEditingControlsMute:
-            case TGDialogListCellEditingControlsUnmute:
-                return TGDialogListEditingBrandedIcon(@"volume-up-fill");
-            case TGDialogListCellEditingControlsRead:
-                return TGDialogListEditingBrandedIcon(@"read-fill");
-            case TGDialogListCellEditingControlsUnread:
-                return TGDialogListEditingMessageIcon(button, [UIColor whiteColor]);
-            case TGDialogListCellEditingControlsGroup:
-            case TGDialogListCellEditingControlsUngroup:
-                return TGDialogListEditingBrandedIcon(@"folder-fill");
-            case TGDialogListCellEditingControlsArchive:
-            case TGDialogListCellEditingControlsUnarchive:
-                return TGDialogListEditingBrandedIcon(@"inboxes-fill");
-            case TGDialogListCellEditingControlsCommunity:
-                return TGDialogListEditingBrandedIcon(@"folder-fill");
-            default:
-                return nil;
-        }
-    }
+    
     switch (button) {
         case TGDialogListCellEditingControlsDelete:
             return presentation.images.dialogEditDeleteIcon;
@@ -680,7 +625,7 @@ static CGRect validatedRect(CGRect value) {
             button.labelOnly = _labelOnly;
             button.smallLabel = _smallLabels;
             button.offsetLabel = _offsetLabels;
-            NSString *animationName = false ? nil : animationForType(buttonType);
+            NSString *animationName = animationForType(buttonType);
             if (animationName.length > 0 && [[NSBundle mainBundle] pathForResource:animationName ofType:@"json"] == nil)
                 animationName = nil;
             if (animationName.length > 0)

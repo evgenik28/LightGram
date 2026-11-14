@@ -77,7 +77,7 @@ static TGCommunitySheetPosition TGCommunitySheetTargetPosition(CGFloat fullTop, 
         _conversation = conversation;
         _presentation = presentation;
         _dataSource = dataSource;
-        _brandedAppearance = false ? [TGPresentation brandedIOS6CommunitySheetAppearance] : nil;
+        _brandedAppearance = nil;
         _conversations = @[];
         _conversationJoined = @[];
 

@@ -71,33 +71,7 @@ static const float luminanceThreshold = 0.8f;
 
 - (void)setBackdropArea:(TGStaticBackdropAreaData *)backdropArea transitionDuration:(NSTimeInterval)transitionDuration
 {
-    if (false && cpuCoreCount() >= 2 && transitionDuration > DBL_EPSILON)
-    {
-        id currentContents = self.layer.contents;
-        if (currentContents != nil)
-        {
-            [CATransaction begin];
-            [CATransaction setDisableActions:true];
-            CALayer *transitionLayer = [[CALayer alloc] init];
-            transitionLayer.frame = self.bounds;
-            transitionLayer.contents = currentContents;
-            [CATransaction commit];
-            
-            [self.layer addSublayer:transitionLayer];
-            
-            CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:@"opacity"];
-            animation.fromValue = @(1.0f);
-            animation.toValue = @(0.0f);
-            animation.duration = 5.0;
-            animation.removedOnCompletion = true;
-            
-            TGAnimationBlockDelegate *animationDelegate = [[TGAnimationBlockDelegate alloc] initWithLayer:transitionLayer];;
-            animationDelegate.removeLayerOnCompletion = true;
-            animation.delegate = animationDelegate;
-            
-            [transitionLayer addAnimation:animation forKey:@"opacity"];
-        }
-    }
+    
     
     CGFloat previousLuminance = 0.0f;
     CGFloat currentLuminance = 0.0f;

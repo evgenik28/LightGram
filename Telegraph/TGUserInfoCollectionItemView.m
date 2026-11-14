@@ -780,10 +780,7 @@ static NSString *TGIOS6ProfileMusicTitle(TGDocumentMediaAttachment *document)
     if (!TGStringCompare(status, _statusLabel.text))
     {
         _statusLabel.text = status;
-        if (false)
-            _statusLabel.textColor = [LGTheme brandedTheme].profileAppearance.statusTextColor;
-        else
-            _statusLabel.textColor = active ? self.presentation.pallete.accentColor : self.presentation.pallete.collectionMenuVariantColor;
+        _statusLabel.textColor = active ? self.presentation.pallete.accentColor : self.presentation.pallete.collectionMenuVariantColor;
         [self setNeedsLayout];
     }
 }
@@ -836,15 +833,13 @@ static NSString *TGIOS6ProfileMusicTitle(TGDocumentMediaAttachment *document)
 
 - (CGFloat)avatarPlaceholderFontSizeForDiameter:(CGFloat)diameter
 {
-    if (false)
-        return [LGTheme brandedTheme].profileAppearance.avatarPlaceholderFontSize;
+    
     return diameter > 64.0f ? 42.0f : 28.0f;
 }
 
 - (CGFloat)currentAvatarDiameter
 {
-    if (false)
-        return [LGTheme brandedTheme].profileAppearance.avatarSize;
+    
     return [self usesModernLayout] ? TGProfileHeaderAvatarSize : 64.0f;
 }
 
@@ -1166,7 +1161,6 @@ static NSString *TGIOS6ProfileMusicTitle(TGDocumentMediaAttachment *document)
     _disclosureIndicator.hidden = false;
     self.backgroundView.hidden = false;
     self.selectedBackgroundView.hidden = false;
-    if (!false)
     {
         _nameLabel.font = TGMediumSystemFontOfSize(20.0f);
         _nameLabel.numberOfLines = _multilineName ? 2 : 1;
@@ -1174,152 +1168,10 @@ static NSString *TGIOS6ProfileMusicTitle(TGDocumentMediaAttachment *document)
     [self updateAvatarForCurrentLayout];
 
     CGRect bounds = self.bounds;
-    if (false && !_editing)
-    {
-        LGTheme *theme = [LGTheme brandedTheme];
-        LGProfileAppearance *appearance = theme.profileAppearance;
-        bool hasAbout = _about.length > 0;
-        bool hasMusic = _profileMusicButton != nil;
-        bool hasPhone = _phoneLabel.text.length > 0;
-        bool hasUsername = _usernameLabel.text.length > 0;
-        CGFloat cardTop = appearance.cardTop;
-        CGFloat cardInnerHeight = hasAbout ? appearance.cardInnerHeightWithAbout : appearance.cardInnerHeight;
-        CGFloat musicY = cardTop + cardInnerHeight;
-        CGFloat cardHeight = cardInnerHeight + (hasMusic ? appearance.musicHeight : 0.0f);
-        CGFloat cardX = appearance.cardLeft + self.safeAreaInset.left;
-        CGFloat cardWidth = bounds.size.width - appearance.cardLeft - appearance.cardRight - self.safeAreaInset.left - self.safeAreaInset.right;
-
-        UIEdgeInsets cardOutsets = UIEdgeInsetsZero;
-        _brandedBackgroundView.image = [LGProfileHeader legacyCardImageWithTheme:theme size:CGSizeMake(cardWidth, cardHeight) hasMusic:hasMusic outsets:&cardOutsets];
-        _brandedBackgroundView.frame = CGRectMake(cardX - cardOutsets.left, cardTop - cardOutsets.top, cardWidth + cardOutsets.left + cardOutsets.right, cardHeight + cardOutsets.top + cardOutsets.bottom);
-
-        _avatarView.frame = CGRectMake(cardX + appearance.avatarInset, cardTop + appearance.avatarTop, appearance.avatarSize, appearance.avatarSize);
-        UIEdgeInsets avatarOutsets = UIEdgeInsetsZero;
-        _brandedAvatarOverlayView.hidden = false;
-        _brandedAvatarOverlayView.image = [LGProfileHeader legacyAvatarOverlayImageWithTheme:theme size:_avatarView.frame.size outsets:&avatarOutsets];
-        _brandedAvatarOverlayView.frame = CGRectMake(CGRectGetMinX(_avatarView.frame) - avatarOutsets.left, CGRectGetMinY(_avatarView.frame) - avatarOutsets.top, _avatarView.frame.size.width + avatarOutsets.left + avatarOutsets.right, _avatarView.frame.size.height + avatarOutsets.top + avatarOutsets.bottom);
-
-        UIImage *currentAvatarImage = [_avatarView currentImage];
-        if (currentAvatarImage != _brandedReflectedAvatarImage)
-        {
-            _brandedReflectedAvatarImage = currentAvatarImage;
-            _brandedAvatarReflectionView.image = currentAvatarImage;
-        }
-        CGFloat reflectionY = cardTop + appearance.reflectionTop;
-        CGFloat reflectionFadeHeight = appearance.reflectionMaskLength * appearance.avatarSize;
-        _brandedAvatarReflectionView.hidden = currentAvatarImage == nil || musicY - reflectionY < reflectionFadeHeight;
-        _brandedAvatarReflectionView.transform = CGAffineTransformIdentity;
-        _brandedAvatarReflectionView.frame = CGRectMake(CGRectGetMinX(_avatarView.frame), reflectionY, appearance.avatarSize, appearance.avatarSize);
-        _brandedAvatarReflectionView.transform = CGAffineTransformMakeScale(1.0f, -1.0f);
-        CAGradientLayer *reflectionMask = (CAGradientLayer *)_brandedAvatarReflectionView.layer.mask;
-        reflectionMask.frame = _brandedAvatarReflectionView.bounds;
-
-        CGFloat textX = CGRectGetMaxX(_avatarView.frame) + appearance.textGap;
-        CGFloat textRight = cardX + cardWidth - appearance.textRightInset;
-        CGFloat statusWidth = 0.0f;
-        CGFloat statusX = 0.0f;
-        if (_statusLabel.text.length > 0)
-        {
-            CGSize statusSize = [_statusLabel.text sizeWithFont:TGSystemFontOfSize(appearance.statusFontSize) constrainedToSize:CGSizeMake(appearance.statusMaximumWidth, appearance.statusHeight)];
-            statusWidth = MIN(appearance.statusMaximumWidth, MAX(appearance.statusMinimumWidth, ceilf(statusSize.width) + appearance.statusHorizontalPadding));
-            statusX = cardX + cardWidth - appearance.statusRightInset - statusWidth;
-        }
-        CGFloat textRightForName = statusWidth > FLT_EPSILON ? statusX - appearance.statusNameGap : textRight;
-        CGFloat textWidth = MAX(0.0f, textRightForName - textX);
-        CGFloat nameFontSize = appearance.nameMaximumFontSize;
-        _nameLabel.font = [LGProfileHeader legacyNameFontWithTheme:theme size:nameFontSize];
-        CGSize fullNameSize = [_nameLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, appearance.nameMeasureHeight)];
-        while (fullNameSize.width > textWidth && nameFontSize > appearance.nameMinimumFontSize)
-        {
-            nameFontSize -= 1.0f;
-            _nameLabel.font = [LGProfileHeader legacyNameFontWithTheme:theme size:nameFontSize];
-            fullNameSize = [_nameLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, appearance.nameMeasureHeight)];
-        }
-        _nameLabel.textColor = appearance.nameColor;
-        _nameLabel.shadowColor = appearance.nameShadowColor;
-        _nameLabel.shadowOffset = appearance.nameShadowOffset;
-        _nameLabel.frame = CGRectMake(textX, cardTop + appearance.nameTop, textWidth, appearance.nameFrameHeight);
-
-        if (_statusLabel.text.length > 0)
-        {
-            CGRect statusFrame = CGRectMake(statusX, cardTop + appearance.statusTop, statusWidth, appearance.statusHeight);
-            UIEdgeInsets statusOutsets = UIEdgeInsetsZero;
-            _brandedStatusBackgroundView.hidden = false;
-            _brandedStatusBackgroundView.image = [LGProfileHeader legacyStatusBackgroundImageWithTheme:theme size:statusFrame.size outsets:&statusOutsets];
-            _brandedStatusBackgroundView.frame = CGRectMake(statusFrame.origin.x - statusOutsets.left, statusFrame.origin.y - statusOutsets.top, statusFrame.size.width + statusOutsets.left + statusOutsets.right, statusFrame.size.height + statusOutsets.top + statusOutsets.bottom);
-            _statusLabel.font = TGSystemFontOfSize(appearance.statusFontSize);
-            _statusLabel.textAlignment = NSTextAlignmentCenter;
-            _statusLabel.textColor = appearance.statusTextColor;
-            _statusLabel.shadowColor = appearance.statusTextShadowColor;
-            _statusLabel.shadowOffset = appearance.statusTextShadowOffset;
-            _statusLabel.backgroundColor = [UIColor clearColor];
-            _statusLabel.layer.cornerRadius = 0.0f;
-            _statusLabel.clipsToBounds = false;
-            _statusLabel.frame = CGRectMake(statusFrame.origin.x, statusFrame.origin.y + appearance.statusTextTop, statusFrame.size.width, appearance.statusTextHeight);
-        }
-        else
-        {
-            _brandedStatusBackgroundView.hidden = true;
-            _statusLabel.backgroundColor = [UIColor clearColor];
-            _statusLabel.frame = CGRectZero;
-        }
-
-        if (_phoneLabel != nil)
-        {
-            _phoneLabel.hidden = !hasPhone;
-            _phoneLabel.font = TGSystemFontOfSize(appearance.phoneFontSize);
-            _phoneLabel.textColor = appearance.phoneColor;
-            _phoneLabel.frame = hasPhone ? CGRectMake(textX, cardTop + appearance.phoneTop, MAX(0.0f, textRight - textX), appearance.secondaryLineHeight) : CGRectZero;
-        }
-        if (_usernameLabel != nil)
-        {
-            _usernameLabel.hidden = !hasUsername;
-            _usernameLabel.font = TGSystemFontOfSize(appearance.usernameFontSize);
-            _usernameLabel.textColor = appearance.usernameColor;
-            CGFloat usernameY = cardTop + (hasPhone ? appearance.usernameTopWithPhone : appearance.usernameTop);
-            _usernameLabel.frame = hasUsername ? CGRectMake(textX, usernameY, MAX(0.0f, textRight - textX), appearance.secondaryLineHeight) : CGRectZero;
-        }
-
-        _aboutTitleLabel.hidden = !hasAbout;
-        _aboutLabel.hidden = !hasAbout;
-        if (hasAbout)
-        {
-            _aboutTitleLabel.font = TGSystemFontOfSize(appearance.aboutTitleFontSize);
-            _aboutTitleLabel.textColor = appearance.aboutTitleColor;
-            _aboutLabel.font = TGSystemFontOfSize(appearance.aboutFontSize);
-            _aboutLabel.textColor = appearance.aboutColor;
-            _aboutTitleLabel.frame = CGRectMake(textX, cardTop + appearance.aboutTitleTop, MAX(0.0f, textRight - textX), appearance.aboutTitleHeight);
-            _aboutLabel.frame = CGRectMake(textX, cardTop + appearance.aboutTop, MAX(0.0f, textRight - textX), appearance.aboutHeight);
-        }
-
-        _callButton.frame = CGRectMake(bounds.size.width - 57.0f - self.safeAreaInset.right, 29.0f, 44.0f, 44.0f);
-
-        if (_profileMusicButton != nil)
-        {
-            CGFloat musicX = cardX;
-            CGFloat musicWidth = cardWidth;
-            _profileMusicButton.frame = CGRectMake(musicX, musicY, musicWidth, appearance.musicHeight);
-            _profileMusicButton.layer.mask = nil;
-            LGPlatformApplyViewShadow(_profileMusicButton, nil, 0.0f, 0.0f, CGSizeZero);
-            LGPlatformApplyViewShadow(_profileMusicArrowView, nil, 0.0f, 0.0f, CGSizeZero);
-            _profileMusicIconLabel.hidden = true;
-            UIEdgeInsets playOutsets = UIEdgeInsetsZero;
-            _profileMusicArrowView.image = [LGProfileHeader legacyMusicPlayImageWithTheme:theme outsets:&playOutsets];
-            _profileMusicArrowView.frame = CGRectMake(musicWidth - appearance.musicArrowRight - appearance.musicArrowSize - playOutsets.left, appearance.musicArrowTop - playOutsets.top, appearance.musicArrowSize + playOutsets.left + playOutsets.right, appearance.musicArrowSize + playOutsets.top + playOutsets.bottom);
-            _profileMusicTextLabel.font = TGSystemFontOfSize(appearance.musicFontSize);
-            _profileMusicTextLabel.textColor = appearance.musicTextColor;
-            _profileMusicTextLabel.shadowColor = appearance.musicTextShadowColor;
-            _profileMusicTextLabel.shadowOffset = appearance.musicTextShadowOffset;
-            _profileMusicTextLabel.frame = CGRectMake(appearance.musicTextLeft, appearance.musicTextTop, MAX(0.0f, musicWidth - appearance.musicTextLeft - appearance.musicTextRight), appearance.musicTextHeight);
-        }
-
-        _avatarOverlay.frame = _avatarView.frame;
-        _avatarIconView.center = CGPointMake(CGRectGetMidX(_avatarView.frame), CGRectGetMidY(_avatarView.frame));
-        return;
-    }
+    
     _brandedAvatarOverlayView.hidden = true;
     _brandedStatusBackgroundView.hidden = true;
-    CGFloat classicInset = false ? 10.0f : 0.0f;
+    CGFloat classicInset = 0.0f;
     
     _avatarView.frame = CGRectMake(15.0f + classicInset + _avatarOffset.width + self.safeAreaInset.left, 16.0f + _avatarOffset.height, 66.0f, 66.0f);
     

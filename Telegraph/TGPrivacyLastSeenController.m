@@ -315,15 +315,7 @@
         {
             [self setRightBarButtonItem:nil animated:true];
             
-            if (false && iosMajorVersion() >= 7)
-            {
-                UIView *backArrow = _findBackArrow(self.navigationController.navigationBar);
-                backArrow.alpha = 0.0f;
-                [UIView animateWithDuration:0.3 delay:0.17 options:0 animations:^
-                {
-                    backArrow.alpha = 1.0f;
-                } completion:nil];
-            }
+            
         }
     }
 }

@@ -257,7 +257,7 @@
         _contactTextModel.layoutFlags = TGReusableLabelLayoutMultiline;
         [_contentModel addSubmodel:_contactTextModel];
         
-        UIImage *icon = _incomingAppearance ? TGTintedImage(TGImageNamed(@"ModernMessageContactAdd_Incoming.png"), context.presentation.pallete.chatIncomingAccentColor) : TGTintedImage(TGImageNamed(@"ModernMessageContactAdd_Incoming.png"), false ? [UIColor whiteColor] : context.presentation.pallete.chatOutgoingAccentColor);
+        UIImage *icon = _incomingAppearance ? TGTintedImage(TGImageNamed(@"ModernMessageContactAdd_Incoming.png"), context.presentation.pallete.chatIncomingAccentColor) : TGTintedImage(TGImageNamed(@"ModernMessageContactAdd_Incoming.png"), context.presentation.pallete.chatOutgoingAccentColor);
         
         _contactButtonModel = [[TGModernButtonViewModel alloc] init];
         _contactButtonModel.image = icon;
@@ -267,16 +267,6 @@
         int daytimeVariant = 0;
         NSString *dateText = [TGDateUtils stringForShortTime:(int)message.date daytimeVariant:&daytimeVariant];
         _dateModel = [[TGModernDateViewModel alloc] initWithText:dateText textColor:_incomingAppearance ? _context.presentation.pallete.chatIncomingDateColor : _context.presentation.pallete.chatOutgoingDateColor daytimeVariant:daytimeVariant];
-        if (false)
-        {
-            _dateModel.hidden = true;
-            UIImage *deliveryImage = [TGPresentationAssets brandedIOS6DeliveryTagImage:dateText incoming:_incomingAppearance read:_read];
-            _brandedDeliveryPlateModel = [[TGModernImageViewModel alloc] initWithImage:deliveryImage];
-            _brandedDeliveryPlateModel.hidden = !_incomingAppearance && _deliveryState != TGMessageDeliveryStateDelivered;
-            [_brandedDeliveryPlateModel sizeToFit];
-            [self addSubmodel:_brandedDeliveryPlateModel];
-        }
-        else
         {
             [_contentModel addSubmodel:_dateModel];
         }
@@ -290,7 +280,7 @@
             _messageViewsModel.hidden = _deliveryState != TGMessageDeliveryStateDelivered;
         }
         
-        if (!_incoming && !false)
+        if (!_incoming)
         {
             _checkFirstModel = [[TGModernImageViewModel alloc] initWithImage:_context.presentation.images.chatDeliveredIcon];
             _checkSecondModel = [[TGModernImageViewModel alloc] initWithImage:_context.presentation.images.chatReadIcon];

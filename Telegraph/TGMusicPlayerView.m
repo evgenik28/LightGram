@@ -224,7 +224,7 @@ extern NSCache *TGPlayerPluginPaletteCache(void);
 - (void)setPresentation:(TGPresentation *)presentation
 {
     _presentation = presentation;
-    _brandedAppearance = false ? (_playerLayout == TGNavigationBarMusicPlayerLayoutStandard ? [LGTheme brandedTheme].musicPlayerAppearance : [LGMusicPlayerAppearance conversationAppearanceDark:[LGTheme brandedTheme].dark compact:_playerLayout == TGNavigationBarMusicPlayerLayoutCompactConversation]) : nil;
+    _brandedAppearance = nil;
     
     _minimizedBar.backgroundColor = presentation.pallete.barBackgroundColor;
     _minimizedBarStripe.backgroundColor = presentation.pallete.barSeparatorColor;
@@ -365,7 +365,7 @@ extern NSCache *TGPlayerPluginPaletteCache(void);
 
 - (CGFloat)preferredHeight
 {
-    return false ? [LGTheme brandedTheme].musicPlayerAppearance.height : 37.0f;
+    return 37.0f;
 }
 
 - (void)setCompactHeaderActivated:(void (^)(void))activated

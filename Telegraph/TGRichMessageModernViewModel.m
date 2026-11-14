@@ -1870,7 +1870,7 @@ static NSString *TGRichMessageFormatNumber(NSInteger value, NSString *type)
     }
     CGSize size = CGSizeMake(_layoutWidth, _contentHeight);
     if (![self reactionsShareTimeRow])
-        size.height += false ? [TGPresentation brandedIOS6ConversationAppearance].bubbleTimeRowHeight : 16.0f;
+        size.height += 16.0f;
     size.height += 2.0f;
     return size;
 }

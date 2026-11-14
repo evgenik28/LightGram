@@ -38,7 +38,7 @@ CGFloat TGCollectionItemDescriptionTextHeight(NSString *text, CGFloat width)
 
 CGFloat TGCollectionItemDescriptionHorizontalInset(void)
 {
-    return false ? 10.0f : 0.0f;
+    return 0.0f;
 }
 
 CGFloat TGCollectionItemSwitchDescriptionWidth(CGFloat containerWidth)

@@ -77,7 +77,7 @@ static TGMessageDiscussionContentProperty *TGMessageGroupedLayoutDiscussion(TGMe
     {
         CGSize maxSize;
         [TGImageMessageViewModel calculateImageSizesForImageSize:CGSizeMake(720.0f, 660.0f) thumbnailSize:NULL renderSize:&maxSize squareAspect:false larger:larger];
-        const CGFloat spacing = false ? 0.0f : 1.0f;
+        const CGFloat spacing = 1.0f;
         
         NSString *proportions = @"";
         CGFloat averageAspectRatio = 0.0f;

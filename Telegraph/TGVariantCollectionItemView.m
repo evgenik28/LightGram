@@ -75,21 +75,8 @@
     _variantLabel.textColor = _customVariantColor ?: (classicThemeStyle && !classicDarkStyle ? UIColorRGB(0x7f7f7f) : presentation.pallete.collectionMenuVariantColor);
     _descriptionLabel.textColor = classicThemeStyle && !classicDarkStyle ? UIColorRGB(0x7f7f7f) : presentation.pallete.collectionMenuVariantColor;
     UIImage *disclosureImage = classicThemeStyle ? [TGPresentation classicIOS6ResourceImage:@"MenuDisclosureIndicator"] : presentation.images.collectionMenuDisclosureIcon;
-    if (false)
-        disclosureImage = [LGSettingsCell legacyBrandedDisclosureImageWithTheme:[LGTheme brandedTheme]] ?: disclosureImage;
-    else if (classicDarkStyle)
+    if (classicDarkStyle)
         disclosureImage = [TGPresentation classicIOS6ThemedImage:disclosureImage tintColor:presentation.pallete.collectionMenuAccessoryColor alpha:0.82f];
-    if (false && _brandedSettingsStyle)
-    {
-        LGTheme *theme = [LGTheme brandedTheme];
-        [LGSettingsCell applyLegacyBrandedTitleStyleWithTheme:theme titleLabel:_titleLabel];
-        _variantLabel.hidden = true;
-        _iconView.image = _brandedSettingsIconName.length == 0 ? nil : [TGPresentation brandedIOS6ResourceImage:_brandedSettingsIconName];
-        if (_iconView.image != nil)
-            [LGSettingsCell applyLegacyBrandedIconStyleWithTheme:theme iconView:_iconView];
-        disclosureImage = [LGSettingsCell legacyBrandedDisclosureImageWithTheme:theme] ?: disclosureImage;
-    }
-    else
     {
         _variantLabel.hidden = false;
     }
@@ -214,19 +201,12 @@
     [super layoutSubviews];
     
     CGRect bounds = self.bounds;
-    if (false && _brandedSettingsStyle)
-    {
-        _iconView.hidden = _iconView.image == nil;
-        _variantLabel.hidden = true;
-        _disclosureIndicator.hidden = false;
-        [LGSettingsCell applyLegacyBrandedStyleWithTheme:[LGTheme brandedTheme] titleLabel:_titleLabel iconView:_iconView disclosureView:_disclosureIndicator bounds:bounds safeAreaInsets:self.safeAreaInset];
-        return;
-    }
+    
 
     bool hasDescription = _descriptionLabel != nil && !_descriptionLabel.hidden;
     if (hasDescription)
         bounds.size.height = 44.0f;
-    CGFloat classicInset = false ? 10.0f : 0.0f;
+    CGFloat classicInset = 0.0f;
     CGFloat width = bounds.size.width - self.safeAreaInset.left - self.safeAreaInset.right - classicInset * 2.0f;
     
     CGSize titleSize = [_titleLabel sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];

@@ -1808,7 +1808,7 @@ static void TGModernConversationControllerConfigureHistoryWindow(void)
 {
     if ([self isAdminLog] || [self isSavedMessages]) {
         if (_infoButtonItem == nil) {
-            if (iosMajorVersion() < 7 && !false) {
+            if (iosMajorVersion() < 7) {
                 UIImage *image = [self _searchBarButtonImage];
                 _searchBarButton = [[TGModernButton alloc] initWithFrame:CGRectMake(0.0f, 0.0f, image.size.width + 16.0f, 44.0f)];
                 _searchBarButton.adjustsImageWhenHighlighted = false;
@@ -1817,8 +1817,7 @@ static void TGModernConversationControllerConfigureHistoryWindow(void)
                 _infoButtonItem = [[UIBarButtonItem alloc] initWithCustomView:_searchBarButton];
             } else {
                 _infoButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSearch target:self action:@selector(searchPressed)];
-                if (false)
-                    _infoButtonItem.imageInsets = UIEdgeInsetsMake(0.0f, 2.0f, 0.0f, -2.0f);
+                
             }
         }
         return _infoButtonItem;
@@ -1918,8 +1917,7 @@ static void TGModernConversationControllerConfigureHistoryWindow(void)
     if (_brandedMusicPlayerCompact == compact)
         return;
     _brandedMusicPlayerCompact = compact;
-    if (!false)
-        return;
+    return;
     void (^layout)(void) = ^
     {
         [self setAdditionalNavigationBarHeight:_brandedMusicPlayerRequestedHeight];
@@ -2080,7 +2078,7 @@ static void TGModernConversationControllerConfigureHistoryWindow(void)
         _snowflakesView.frame = _backgroundView.bounds;
         [_backgroundView addSubview:_snowflakesView];
     }
-    _snowflakesView.color = false ? [TGPresentation brandedIOS6NavigationTitleColor] : _presentation.pallete.navigationTitleColor;
+    _snowflakesView.color = _presentation.pallete.navigationTitleColor;
     [_snowflakesView setActive:true animated:animated];
 }
 
@@ -2250,9 +2248,9 @@ static void TGModernConversationControllerConfigureHistoryWindow(void)
     _brandedMusicPlayerHostView.backgroundColor = [UIColor clearColor];
     
     _backgroundView = [[UIImageView alloc] initWithFrame:_view.bounds];
-    UIImage *wallpaperImage = false ? [self brandedBackgroundImage] : [[TGWallpaperManager instance] currentWallpaperImage];
+    UIImage *wallpaperImage = [[TGWallpaperManager instance] currentWallpaperImage];
     _backgroundView.image = wallpaperImage;
-    _backgroundView.backgroundColor = false ? [UIColor whiteColor] : [UIColor clearColor];
+    _backgroundView.backgroundColor = [UIColor clearColor];
     _backgroundView.clipsToBounds = true;
     _backgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _backgroundView.contentMode = UIViewContentModeScaleAspectFill;
@@ -3195,8 +3193,7 @@ static void TGModernConversationControllerConfigureHistoryWindow(void)
     
     [super willAnimateRotationToInterfaceOrientation:toInterfaceOrientation duration:duration];
     
-    if (false && [self _brandedBackgroundNeedsUpdate])
-        [self _updateConversationBackgroundAnimated:false];
+    
     
     [_currentInputPanel adjustForSize:_view.bounds.size keyboardHeight:_keyboardHeight duration:duration animationCurve:0 contentAreaHeight:[self contentAreaHeight] safeAreaInset:[TGViewController safeAreaInsetForOrientation:toInterfaceOrientation]];
     [self _adjustCollectionViewForSize:_view.bounds.size keyboardHeight:_keyboardHeight inputContainerHeight:[_currentInputPanel currentHeight] duration:duration animationCurve:0];
@@ -3206,8 +3203,7 @@ static void TGModernConversationControllerConfigureHistoryWindow(void)
 {
     [super controllerInsetUpdated:previousInset];
     
-    if (false && [self _brandedBackgroundNeedsUpdate])
-        [self _updateConversationBackgroundAnimated:false];
+    
     
     if (![self viewControllerIsChangingInterfaceOrientation] && _collectionView != nil)
         [self _adjustCollectionInset];
@@ -6435,7 +6431,7 @@ struct TGModernConversationPrerenderCandidateComparator
             topInset = _keyboardHeight + [_currentInputPanel currentHeight];
         }
         UIEdgeInsets safeAreaInset = self.controllerSafeAreaInset;
-        UIEdgeInsets buttonInsets = false ? [TGPresentation brandedIOS6ConversationAppearance].scrollButtonInsets : UIEdgeInsetsMake(0.0f, 0.0f, 6.0f, 6.0f);
+        UIEdgeInsets buttonInsets = UIEdgeInsetsMake(0.0f, 0.0f, 6.0f, 6.0f);
         _scrollButtons.frame = CGRectMake(collectionViewSize.width - buttonSize.width - buttonInsets.right - safeAreaInset.right, collectionViewSize.height - buttonSize.height - topInset - buttonInsets.bottom, buttonSize.width, buttonSize.height);
     }
 }
@@ -9731,8 +9727,8 @@ struct TGModernConversationPrerenderCandidateComparator
     tempImageView.contentMode = _backgroundView.contentMode;
     tempImageView.frame = _backgroundView.frame;
     [_backgroundView.superview insertSubview:tempImageView aboveSubview:_backgroundView];
-    _backgroundView.image = false ? [self brandedBackgroundImage] : [[TGWallpaperManager instance] currentWallpaperImage];
-    _backgroundView.backgroundColor = false ? [UIColor whiteColor] : [UIColor clearColor];
+    _backgroundView.image = [[TGWallpaperManager instance] currentWallpaperImage];
+    _backgroundView.backgroundColor = [UIColor clearColor];
     [self _updateBrandedCardViewsWithBackground:_backgroundView.image];
     
     [UIView animateWithDuration:0.3 animations:^
@@ -10298,8 +10294,7 @@ struct TGModernConversationPrerenderCandidateComparator
 
 - (void)_updateBackButtonTitleAdjustment:(bool)appearing
 {
-    if (!false)
-        return;
+    return;
     UIViewController *previousController = nil;
     NSArray *viewControllers = self.navigationController.viewControllers;
     NSUInteger index = viewControllers != nil ? [viewControllers indexOfObject:self] : NSNotFound;
@@ -14330,28 +14325,6 @@ struct TGModernConversationPrerenderCandidateComparator
             }
         }
         
-        if (false && animateFromIndex != NSNotFound)
-        {
-            [(TGMessageModernConversationItem *)((TGModernCollectionCell *)visibleCells[animateFromIndex]).boundItem updateEditingState:_viewStorage animationDelay:0.0];
-            
-            NSTimeInterval upDelay = 0.01;
-            for (NSInteger i = animateFromIndex + 1; i < (NSInteger)visibleCells.count; i++)
-            {
-                TGModernCollectionCell *cell = visibleCells[i];
-                [(TGMessageModernConversationItem *)cell.boundItem updateEditingState:_viewStorage animationDelay:upDelay];
-                
-                upDelay += 0.008;
-            }
-            
-            NSTimeInterval downDelay = 0.01;
-            for (NSInteger i = animateFromIndex - 1; i >= 0; i--)
-            {
-                TGModernCollectionCell *cell = visibleCells[i];
-                [(TGMessageModernConversationItem *)cell.boundItem updateEditingState:_viewStorage animationDelay:downDelay];
-                downDelay += 0.008;
-            }
-        }
-        else
         {
             NSTimeInterval delay = 0.0;
             for (TGModernCollectionCell *cell in visibleCells)

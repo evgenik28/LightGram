@@ -137,7 +137,6 @@
         ]];
         [self.menuSections addSection:interfaceStyleSection];
         
-        if (!false)
         {
             _roundChatAvatarItem = [[TGSwitchCollectionItem alloc] initWithTitle:TGLocalized(@"LightGramAppearance.RoundChatAvatar") isOn:[TGLightGramSettings boolForKey:TGLightGramSettingAppearanceRoundChatAvatar]];
             _roundChatAvatarItem.interfaceHandle = _actionHandle;
@@ -153,7 +152,7 @@
             ]]];
         }
 
-        if (TGLightGramModernInterfaceEnabled() && !false)
+        if (TGLightGramModernInterfaceEnabled())
         {
             TGDisclosureActionCollectionItem *stickersItem = [[TGDisclosureActionCollectionItem alloc] initWithTitle:TGLocalized(@"ChatSettings.Stickers") action:@selector(stickersPressed)];
             stickersItem.deselectAutomatically = true;
@@ -208,8 +207,7 @@
 
 - (void)wallpapersPressed
 {
-    if (false)
-        return;
+    
 
     TGWallpaperListController *controller = [[TGWallpaperListController alloc] init];
     controller.presentation = self.presentation;
@@ -318,15 +316,13 @@
 
 - (TGWallpaperInfo *)builtinWallpaper
 {
-    if (false)
-        return nil;
+    
     return [[TGWallpaperManager instance] builtinWallpaperList].firstObject;
 }
 
 - (TGWallpaperInfo *)colorWallpaperForPallete:(TGPresentationPallete *)pallete
 {
-    if (false)
-        return nil;
+    
     return [[TGColorWallpaperInfo alloc] initWithColor:TGColorHexCode(pallete.backgroundColor)];
 }
 

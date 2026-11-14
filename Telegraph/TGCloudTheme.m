@@ -1122,7 +1122,7 @@ static SSignal *TGCloudThemeRequest(NSString *slug, NSString *format)
     }
 
     TGWallpaperInfo *wallpaperInfo = [self wallpaperInfo];
-    if (wallpaperInfo != nil && !false)
+    if (wallpaperInfo != nil)
         [[TGWallpaperManager instance] setCurrentWallpaperWithInfo:wallpaperInfo];
     [TGPresentation switchToPallete:pallete];
 }

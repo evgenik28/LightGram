@@ -322,8 +322,7 @@
 
 - (UIColor *)chatIncomingTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].messageTextColor;
+    
     return [UIColor whiteColor];
 }
 
@@ -344,8 +343,7 @@
 
 - (UIColor *)chatIncomingDateColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return UIColorRGB(0x7e93a0);
 }
 
@@ -401,8 +399,7 @@
 
 - (UIColor *)chatOutgoingTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].messageTextColor;
+    
     return [UIColor whiteColor];
 }
 
@@ -423,8 +420,7 @@
 
 - (UIColor *)chatOutgoingDateColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return UIColorRGB(0x8eb1cc);
 }
 
@@ -564,8 +560,7 @@
 
 - (UIColor *)chatChecksColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].timeColor;
+    
     return UIColorRGB(0x63befd);
 }
 
@@ -601,15 +596,13 @@
 
 - (UIColor *)chatInputTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldTextColor;
+    
     return [UIColor whiteColor];
 }
 
 - (UIColor *)chatInputPlaceholderColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6ConversationAppearance].inputFieldPlaceholderColor;
+    
     return UIColorRGB(0x5d6b71);
 }
 
@@ -755,29 +748,25 @@
 
 - (UIColor *)collectionMenuBackgroundColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].collectionBackgroundColor;
+    
     return [self backgroundColor];
 }
 
 - (UIColor *)collectionMenuCellBackgroundColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].groupedFillColor;
+    
     return [self barBackgroundColor];
 }
 
 - (UIColor *)collectionMenuCellSelectionColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].groupedSelectedFillColor;
+    
     return [self selectionColor];
 }
 
 - (UIColor *)collectionMenuTextColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].titleColor;
+    
     return [UIColor whiteColor];
 }
 
@@ -793,8 +782,7 @@
 
 - (UIColor *)collectionMenuAccentColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].accentColor;
+    
     return [self accentColor];
 }
 
@@ -815,8 +803,7 @@
 
 - (UIColor *)collectionMenuCommentColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].commentColor;
+    
     return UIColorRGB(0x83888d);
 }
 
@@ -832,15 +819,13 @@
 
 - (UIColor *)collectionMenuSwitchColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].switchColor;
+    
     return [self accentColor];
 }
 
 - (UIColor *)collectionMenuCheckColor
 {
-    if (false)
-        return [TGPresentation brandedIOS6SettingsAppearanceDark:[self isDark]].accentColor;
+    
     return [self accentColor];
 }
 

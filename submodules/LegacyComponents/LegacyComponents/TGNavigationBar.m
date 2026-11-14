@@ -334,13 +334,7 @@ static void OGCompatNavBarApplyEdgeButtonFonts(UINavigationBar *navigationBar, U
 {
     _hiddenPipe = [[SPipe alloc] init];
     
-    if (false && iosMajorVersion() >= 7 && iosMajorVersion() < 10 && [TGViewController isWidescreen])
-    {
-        TGFixView *activityIndicator = [[TGFixView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
-        activityIndicator.alpha = 0.02f;
-        [self addSubview:activityIndicator];
-        [activityIndicator startAnimating];
-    }
+    
     
     CGFloat backgroundOverflow = iosMajorVersion() >= 7 ? 20.0f : 0.0f;
     if (![self isKindOfClass:[TGTransparentNavigationBar class]])
