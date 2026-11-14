@@ -1,0 +1,285 @@
+#import "MTBackupAddressSignals.h"
+#import "thirdparty/AFNetworking/AFJSONUtilities.h"
+
+#if defined(MtProtoKitDynamicFramework)
+#   import <MTProtoKitDynamic/MTSignal.h>
+#   import <MTProtoKitDynamic/MTQueue.h>
+#   import <MTProtoKitDynamic/MTHttpRequestOperation.h>
+#   import <MTProtoKitDynamic/MTEncryption.h>
+#   import <MTProtoKitDynamic/MTRequestMessageService.h>
+#   import <MTProtoKitDynamic/MTRequest.h>
+#   import <MTProtoKitDynamic/MTContext.h>
+#   import <MTProtoKitDynamic/MTApiEnvironment.h>
+#   import <MTProtoKitDynamic/MTDatacenterAddress.h>
+#   import <MTProtoKitDynamic/MTDatacenterAddressSet.h>
+#   import <MTProtoKitDynamic/MTProto.h>
+#   import <MTProtoKitDynamic/MTSerialization.h>
+#   import <MTProtoKitDynamic/MTLogging.h>
+#elif defined(MtProtoKitMacFramework)
+#   import <MTProtoKitMac/MTSignal.h>
+#   import <MTProtoKitMac/MTQueue.h>
+#   import <MTProtoKitMac/MTHttpRequestOperation.h>
+#   import <MTProtoKitMac/MTEncryption.h>
+#   import <MTProtoKitMac/MTRequestMessageService.h>
+#   import <MTProtoKitMac/MTRequest.h>
+#   import <MTProtoKitMac/MTContext.h>
+#   import <MTProtoKitMac/MTApiEnvironment.h>
+#   import <MTProtoKitMac/MTDatacenterAddress.h>
+#   import <MTProtoKitMac/MTDatacenterAddressSet.h>
+#   import <MTProtoKitMac/MTProto.h>
+#   import <MTProtoKitMac/MTSerialization.h>
+#   import <MTProtoKitMac/MTLogging.h>
+#else
+#   import <MTProtoKit/MTSignal.h>
+#   import <MTProtoKit/MTQueue.h>
+#   import <MTProtoKit/MTHttpRequestOperation.h>
+#   import <MTProtoKit/MTEncryption.h>
+#   import <MTProtoKit/MTRequestMessageService.h>
+#   import <MTProtoKit/MTRequest.h>
+#   import <MTProtoKit/MTContext.h>
+#   import <MTProtoKit/MTApiEnvironment.h>
+#   import <MTProtoKit/MTDatacenterAddress.h>
+#   import <MTProtoKit/MTDatacenterAddressSet.h>
+#   import <MTProtoKit/MTProto.h>
+#   import <MTProtoKit/MTSerialization.h>
+#   import <MTProtoKit/MTLogging.h>
+#endif
+
+static int OGBase64Symbol(unichar character) {
+    static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if (character == '=')
+        return -2;
+    if (character >= 128)
+        return -1;
+    const char *position = (const char *)memchr(alphabet, (int)character, 64);
+    return position == NULL ? -1 : (int)(position - alphabet);
+}
+
+static NSData *OGBase64Decode(NSString *text) {
+    NSMutableData *decoded = [[NSMutableData alloc] initWithCapacity:[text length] * 3 / 4];
+    int group[4];
+    int filled = 0;
+    
+    for (NSUInteger index = 0; index < [text length]; index++) {
+        int symbol = OGBase64Symbol([text characterAtIndex:index]);
+        if (symbol == -1)
+            continue;
+        
+        group[filled++] = symbol;
+        if (filled < 4)
+            continue;
+        
+        uint8_t first = (uint8_t)((group[0] << 2) | ((group[1] & 0x30) >> 4));
+        [decoded appendBytes:&first length:1];
+        if (group[2] != -2) {
+            uint8_t second = (uint8_t)(((group[1] & 0x0f) << 4) | ((group[2] & 0x3c) >> 2));
+            [decoded appendBytes:&second length:1];
+        }
+        if (group[3] != -2) {
+            uint8_t third = (uint8_t)(((group[2] & 0x03) << 6) | group[3]);
+            [decoded appendBytes:&third length:1];
+        }
+        filled = 0;
+    }
+    
+    return decoded;
+}
+
+@implementation MTBackupAddressSignals
+
++ (bool)checkIpData:(MTBackupDatacenterData *)data timestamp:(int32_t)timestamp source:(NSString *)source {
+    if (data.timestamp >= timestamp + 60 * 20 || data.expirationDate <= timestamp - 60 * 20) {
+        if (MTLogEnabled()) {
+            MTLog(@"[Backup address fetch: backup config from %@ validity interval %d ... %d does not include current %d]", source, data.timestamp, data.expirationDate, timestamp);
+        }
+        return false;
+    } else {
+        return true;
+    }
+}
+
++ (MTSignal *)fetchBackupIpsResolveGoogle:(bool)isTesting phoneNumber:(NSString *)phoneNumber currentContext:(MTContext *)currentContext {
+    NSArray *hosts = @[
+        @"google.com",
+        @"www.google.com",
+        @"google.ru"
+    ];
+    NSDictionary *headers = @{@"Host": @"dns.google.com"};
+    
+    NSMutableArray *signals = [[NSMutableArray alloc] init];
+    for (NSString *host in hosts) {
+        MTSignal *signal = [[[MTHttpRequestOperation dataForHttpUrl:[NSURL URLWithString:[NSString stringWithFormat:@"https://%@/resolve?name=%@&type=16", host, isTesting ? @"tapv2.stel.com" : @"apv2.stel.com"]] headers:headers] mapToSignal:^MTSignal *(NSData *data) {
+#if LIGHTGRAM_ARMV6
+            NSDictionary *dict = AFJSONDecode(data, NULL);
+#else
+            NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+#endif
+            if ([dict respondsToSelector:@selector(objectForKey:)]) {
+                NSArray *answer = dict[@"Answer"];
+                NSMutableArray *strings = [[NSMutableArray alloc] init];
+                if ([answer respondsToSelector:@selector(objectAtIndex:)]) {
+                    for (NSDictionary *value in answer) {
+                        if ([value respondsToSelector:@selector(objectForKey:)]) {
+                            NSString *part = value[@"data"];
+                            if ([part respondsToSelector:@selector(characterAtIndex:)]) {
+                                [strings addObject:part];
+                            }
+                        }
+                    }
+#if LIGHTGRAM_ARMV6
+                    for (NSUInteger i = 0; i < [strings count]; i++) {
+                        for (NSUInteger j = i + 1; j < [strings count]; j++) {
+                            if ([[strings objectAtIndex:i] length] < [[strings objectAtIndex:j] length]) {
+                                [strings exchangeObjectAtIndex:i withObjectAtIndex:j];
+                            }
+                        }
+                    }
+#else
+                    [strings sortUsingComparator:^NSComparisonResult(NSString *lhs, NSString *rhs) {
+                        if (lhs.length > rhs.length) {
+                            return NSOrderedAscending;
+                        } else {
+                            return NSOrderedDescending;
+                        }
+                    }];
+#endif
+                    
+                    NSString *finalString = @"";
+                    for (NSString *string in strings) {
+                        finalString = [finalString stringByAppendingString:[string stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"="]]];
+                    }
+                    
+                    NSData *result = OGBase64Decode(finalString);
+                    NSMutableData *finalData = [[NSMutableData alloc] initWithData:result];
+                    [finalData setLength:256];
+                    MTBackupDatacenterData *datacenterData = MTIPDataDecode(finalData, phoneNumber);
+                    if (datacenterData != nil && [self checkIpData:datacenterData timestamp:(int32_t)[currentContext globalTime] source:@"resolveGoogle"]) {
+                        return [MTSignal single:datacenterData];
+                    }
+                }
+            }
+            return [MTSignal complete];
+        }] catch:^MTSignal *(__unused id error) {
+            return [MTSignal complete];
+        }];
+        if (signals.count != 0) {
+            signal = [signal delay:signals.count onQueue:[[MTQueue alloc] init]];
+        }
+        [signals addObject:signal];
+    }
+    
+    return [[MTSignal mergeSignals:signals] take:1];
+}
+
++ (MTSignal *)fetchConfigFromAddress:(MTBackupDatacenterAddress *)address currentContext:(MTContext *)currentContext {
+    MTApiEnvironment *apiEnvironment = [currentContext.apiEnvironment copy];
+    
+    NSMutableDictionary *datacenterAddressOverrides = [[NSMutableDictionary alloc] init];
+    
+    datacenterAddressOverrides[@(address.datacenterId)] = [[MTDatacenterAddress alloc] initWithIp:address.ip port:(uint16_t)address.port preferForMedia:false restrictToTcp:false cdn:false preferForProxy:false secret:address.secret];
+    apiEnvironment.datacenterAddressOverrides = datacenterAddressOverrides;
+    
+    apiEnvironment.apiId = currentContext.apiEnvironment.apiId;
+    apiEnvironment.layer = currentContext.apiEnvironment.layer;
+    apiEnvironment = [apiEnvironment withUpdatedLangPackCode:currentContext.apiEnvironment.langPackCode];
+    apiEnvironment.disableUpdates = true;
+    apiEnvironment.langPack = currentContext.apiEnvironment.langPack;
+    
+    MTContext *context = [[MTContext alloc] initWithSerialization:currentContext.serialization apiEnvironment:apiEnvironment isTestingEnvironment:currentContext.isTestingEnvironment useTempAuthKeys:address.datacenterId != 0 ? currentContext.useTempAuthKeys : false];
+    
+    if (address.datacenterId != 0) {
+        context.keychain = currentContext.keychain;
+    }
+    
+    MTProto *mtProto = [[MTProto alloc] initWithContext:context datacenterId:address.datacenterId usageCalculationInfo:nil];
+    if (address.datacenterId != 0) {
+        mtProto.useTempAuthKeys = currentContext.useTempAuthKeys;
+    }
+    MTRequestMessageService *requestService = [[MTRequestMessageService alloc] initWithContext:context];
+    [mtProto addMessageService:requestService];
+    
+    [mtProto resume];
+    
+    MTRequest *request = [[MTRequest alloc] init];
+    
+    NSData *getConfigData = nil;
+    MTRequestDatacenterAddressListParser responseParser = [currentContext.serialization requestDatacenterAddressWithData:&getConfigData];
+    
+    [request setPayload:getConfigData metadata:@"getConfig" responseParser:responseParser];
+    
+    __weak MTContext *weakCurrentContext = currentContext;
+    return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber) {
+        [request setCompleted:^(MTDatacenterAddressListData *result, __unused NSTimeInterval completionTimestamp, id error)
+         {
+             if (error == nil) {
+                 __strong MTContext *strongCurrentContext = weakCurrentContext;
+                 if (strongCurrentContext != nil) {
+#if LIGHTGRAM_ARMV6
+                     for (NSNumber *nDatacenterId in result.addressList) {
+                         NSArray *list = [result.addressList objectForKey:nDatacenterId];
+                         MTDatacenterAddressSet *addressSet = [[MTDatacenterAddressSet alloc] initWithAddressList:list];
+                         MTDatacenterAddressSet *currentAddressSet = [context addressSetForDatacenterWithId:[nDatacenterId integerValue]];
+                         if (currentAddressSet == nil || ![addressSet isEqual:currentAddressSet])
+                         {
+                             [strongCurrentContext updateAddressSetForDatacenterWithId:[nDatacenterId integerValue] addressSet:addressSet forceUpdateSchemes:true];
+                             [subscriber putNext:@true];
+                             [subscriber putCompletion];
+                         }
+                     }
+#else
+                     [result.addressList enumerateKeysAndObjectsUsingBlock:^(NSNumber *nDatacenterId, NSArray *list, __unused BOOL *stop) {
+                         MTDatacenterAddressSet *addressSet = [[MTDatacenterAddressSet alloc] initWithAddressList:list];
+                         
+                         MTDatacenterAddressSet *currentAddressSet = [context addressSetForDatacenterWithId:[nDatacenterId integerValue]];
+                         
+                         if (currentAddressSet == nil || ![addressSet isEqual:currentAddressSet])
+                         {
+                             
+                             [strongCurrentContext updateAddressSetForDatacenterWithId:[nDatacenterId integerValue] addressSet:addressSet forceUpdateSchemes:true];
+                             [subscriber putNext:@true];
+                             [subscriber putCompletion];
+                         }
+                     }];
+#endif
+                 }
+             } else {
+                 [subscriber putCompletion];
+             }
+         }];
+        
+        [requestService addRequest:request];
+        
+        id requestId = request.internalId;
+        return [[MTBlockDisposable alloc] initWithBlock:^{
+            [requestService removeRequestByInternalId:requestId];
+            [mtProto pause];
+        }];
+    }];
+}
+
++ (MTSignal * )fetchBackupIps:(bool)isTestingEnvironment currentContext:(MTContext * )currentContext additionalSource:(MTSignal * )additionalSource phoneNumber:(NSString * )phoneNumber {
+    NSMutableArray *signals = [[NSMutableArray alloc] init];
+    [signals addObject:[self fetchBackupIpsResolveGoogle:isTestingEnvironment phoneNumber:phoneNumber currentContext:currentContext]];
+    if (additionalSource != nil) {
+        [signals addObject:additionalSource];
+    }
+    
+    return [[[MTSignal mergeSignals:signals] take:1] mapToSignal:^MTSignal *(MTBackupDatacenterData *data) {
+        if (data != nil && data.addressList.count != 0) {
+            NSMutableArray *signals = [[NSMutableArray alloc] init];
+            NSTimeInterval delay = 0.0;
+            for (MTBackupDatacenterAddress *address in data.addressList) {
+                MTSignal *signal = [self fetchConfigFromAddress:address currentContext:currentContext];
+                if (delay > DBL_EPSILON) {
+                    signal = [signal delay:delay onQueue:[[MTQueue alloc] init]];
+                }
+                [signals addObject:signal];
+                delay += 5.0;
+            }
+            return [[MTSignal mergeSignals:signals] take:1];
+        }
+        return [MTSignal complete];
+    }];
+}
+
+@end

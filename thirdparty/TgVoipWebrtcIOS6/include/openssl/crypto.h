@@ -1,0 +1,4 @@
+#ifndef OG_COMPAT_OPENSSL_CRYPTO_H
+#define OG_COMPAT_OPENSSL_CRYPTO_H
+
+#endif

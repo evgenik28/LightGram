@@ -1,0 +1,259 @@
+#import "TLUpdates+TG.h"
+
+#import "TL/TLMetaScheme.h"
+
+#import "TLUpdates$modernUpdateShortChatMessage.h"
+#import "TLUpdates$modernUpdateShortMessage.h"
+#import "TLMessage$modernMessage.h"
+#import "TLUpdates$updateShortSentMessage.h"
+#import "TLUpdate$updateChangePts.h"
+
+@implementation TLUpdates (TG)
+
+- (NSArray *)users
+{
+    if ([self isKindOfClass:[TLUpdates$updates class]])
+        return ((TLUpdates$updates *)self).users ?: @[];
+    if ([self isKindOfClass:[TLUpdates$updatesCombined class]])
+        return ((TLUpdates$updatesCombined *)self).users ?: @[];
+    
+    return @[];
+}
+
+- (NSArray *)chats
+{
+    if ([self isKindOfClass:[TLUpdates$updates class]])
+        return ((TLUpdates$updates *)self).chats ?: @[];
+    if ([self isKindOfClass:[TLUpdates$updatesCombined class]])
+        return ((TLUpdates$updatesCombined *)self).chats ?: @[];
+    
+    return @[];
+}
+
+- (NSArray *)messages
+{
+    NSMutableArray *messages = [[NSMutableArray alloc] init];
+    for (TLUpdate *update in [self updatesList])
+    {
+        TLMessage *message = nil;
+        if ([update isKindOfClass:[TLUpdate$updateNewMessage class]])
+            message = ((TLUpdate$updateNewMessage *)update).message;
+        else if ([update isKindOfClass:[TLUpdate$updateNewChannelMessage class]])
+            message = ((TLUpdate$updateNewChannelMessage *)update).message;
+        else if ([update isKindOfClass:[TLUpdate$updateEditChannelMessage class]])
+            message = ((TLUpdate$updateEditChannelMessage *)update).message;
+        else if ([update isKindOfClass:[TLUpdate$updateEditMessage class]])
+            message = ((TLUpdate$updateEditMessage *)update).message;
+        if (message != nil)
+            [messages addObject:message];
+    }
+    return messages;
+}
+
+- (TLMessage *)messageAtIndex:(NSUInteger)index pts:(int32_t *)pts pts_count:(int32_t *)pts_count
+{
+    NSUInteger messageIndex = 0;
+    for (TLUpdate *update in [self updatesList])
+    {
+        TLMessage *message = nil;
+        int32_t messagePts = 0;
+        int32_t messagePtsCount = 0;
+        if ([update isKindOfClass:[TLUpdate$updateNewMessage class]])
+        {
+            TLUpdate$updateNewMessage *newMessage = (TLUpdate$updateNewMessage *)update;
+            message = newMessage.message;
+            messagePts = newMessage.pts;
+            messagePtsCount = newMessage.pts_count;
+        }
+        else if ([update isKindOfClass:[TLUpdate$updateNewChannelMessage class]])
+        {
+            TLUpdate$updateNewChannelMessage *newMessage = (TLUpdate$updateNewChannelMessage *)update;
+            message = newMessage.message;
+            messagePts = newMessage.pts;
+            messagePtsCount = newMessage.pts_count;
+        }
+        if (message != nil && messageIndex++ == index)
+        {
+            if (pts != NULL)
+                *pts = messagePts;
+            if (pts_count != NULL)
+                *pts_count = messagePtsCount;
+            return message;
+        }
+    }
+    return nil;
+}
+
+- (bool)maxPtsAndCount:(int32_t *)pts ptsCount:(int32_t *)ptsCount
+{
+    bool single = true;
+    int32_t maxPts = 0;
+    int32_t maxPtsCount = 0;
+    
+    if ([self isKindOfClass:[TLUpdates$updates class]] || [self isKindOfClass:[TLUpdates$updatesCombined class]])
+    {
+        NSArray *containedUpdates = @[];
+        
+        if ([self isKindOfClass:[TLUpdates$updates class]])
+        {
+            TLUpdates$updates *updates = (TLUpdates$updates *)self;
+            containedUpdates = updates.updates;
+        }
+        else if ([self isKindOfClass:[TLUpdates$updatesCombined class]])
+        {
+            TLUpdates$updatesCombined *updatesCombined = (TLUpdates$updatesCombined *)self;
+            containedUpdates = updatesCombined.updates;
+        }
+        
+        for (TLUpdate *update in containedUpdates)
+        {
+            if ([update hasPts])
+            {
+                NSAssert([update respondsToSelector:@selector(pts_count)], @"update with pts should also contain pts_count");
+                if ([(TLUpdate$updateNewMessage *)update pts] > maxPts)
+                {
+                    if (maxPts != 0)
+                        single = false;
+                    maxPts = [(TLUpdate$updateNewMessage *)update pts];
+                    maxPtsCount = [(TLUpdate$updateNewMessage *)update pts_count];
+                }
+            }
+        }
+    }
+    else if ([self isKindOfClass:[TLUpdates$updateShort class]])
+    {
+        TLUpdates$updateShort *updateShort = (TLUpdates$updateShort *)self;
+        if ([updateShort.update hasPts])
+        {
+            NSAssert([updateShort.update respondsToSelector:@selector(pts_count)], @"update with pts should also contain pts_count");
+            
+            if ([(TLUpdate$updateNewMessage *)updateShort.update pts] > maxPts)
+            {
+                if (maxPts != 0)
+                    single = false;
+                maxPts = [(TLUpdate$updateNewMessage *)updateShort.update pts];
+                maxPtsCount = [(TLUpdate$updateNewMessage *)updateShort.update pts_count];
+            }
+        }
+    }
+    else if ([self isKindOfClass:[TLUpdates$modernUpdateShortChatMessage class]])
+    {
+        TLUpdates$modernUpdateShortChatMessage *updateShortChatMessage = (TLUpdates$modernUpdateShortChatMessage *)self;
+        
+        if (updateShortChatMessage.pts > maxPts)
+        {
+            if (maxPts != 0)
+                single = false;
+            maxPts = updateShortChatMessage.pts;
+            maxPtsCount = updateShortChatMessage.pts_count;
+        }
+    }
+    else if ([self isKindOfClass:[TLUpdates$modernUpdateShortMessage class]])
+    {
+        TLUpdates$modernUpdateShortMessage *updateShortMessage = (TLUpdates$modernUpdateShortMessage *)self;
+        
+        if (updateShortMessage.pts > maxPts)
+        {
+            if (maxPts != 0)
+                single = false;
+            maxPts = updateShortMessage.pts;
+            maxPtsCount = updateShortMessage.pts_count;
+        }
+    }
+    else if ([self isKindOfClass:[TLUpdates$updateShortSentMessage class]])
+    {
+        TLUpdates$updateShortSentMessage *updateShortSentMessage = (TLUpdates$updateShortSentMessage *)self;
+        
+        if (updateShortSentMessage.pts > maxPts)
+        {
+            if (maxPts != 0)
+                single = false;
+            maxPts = updateShortSentMessage.pts;
+            maxPtsCount = updateShortSentMessage.pts_count;
+        }
+    }
+    
+    if (pts)
+        *pts = maxPts;
+    if (ptsCount)
+        *ptsCount = maxPtsCount;
+    
+    return single;
+}
+
+- (int32_t)maxSeq
+{
+    if ([self isKindOfClass:[TLUpdates$updates class]] || [self isKindOfClass:[TLUpdates$updatesCombined class]])
+    {
+        return ((TLUpdates$updates *)self).seq;
+    }
+    
+    return 0;
+}
+
+- (NSArray *)updatesList
+{
+    if ([self isKindOfClass:[TLUpdates$updates class]])
+    {
+        return ((TLUpdates$updates *)self).updates;
+    }
+    if ([self isKindOfClass:[TLUpdates$updatesCombined class]])
+    {
+        return ((TLUpdates$updatesCombined *)self).updates;
+    }
+    
+    if ([self isKindOfClass:[TLUpdates$updateShort class]])
+    {
+        TLUpdate *update = ((TLUpdates$updateShort *)self).update;
+        return update == nil ? @[] : @[update];
+    }
+    return @[];
+}
+
+@end
+
+@implementation TLUpdate (TG)
+
+- (bool)hasPts
+{
+    if ([self isKindOfClass:[TLUpdate$updateNewMessage class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateEditMessage class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateDeleteMessages class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateReadHistoryInbox class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateReadHistoryOutbox class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateReadMessagesContents class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateChangePts class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateWebPage class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateFolderPeers class]]) {
+        return ((TLUpdate$updateFolderPeers *)self).pts_count != 0;
+    } else if ([self isKindOfClass:[TLUpdate$updatePinnedMessagesCodex class]]) {
+        return true;
+    }
+    return false;
+}
+
+- (bool)hasChannelPts
+{
+    if ([self isKindOfClass:[TLUpdate$updateNewChannelMessage class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateEditChannelMessage class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateDeleteChannelMessages class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updateChannelWebPage class]]) {
+        return true;
+    } else if ([self isKindOfClass:[TLUpdate$updatePinnedChannelMessagesCodex class]]) {
+        return true;
+    }
+    return false;
+}
+
+@end

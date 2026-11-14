@@ -1,0 +1,352 @@
+#import "TGCollectionItemView.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import <QuartzCore/QuartzCore.h>
+
+#import "TGPresentation.h"
+#import "../LightGramUI/Core/LGTheme.h"
+#import "../LightGramUI/Core/LGSettingsAppearance.h"
+#import "../LightGramUI/Lists/LGSettingsCell.h"
+
+@interface TGCollectionItemView ()
+{
+    UIImageView *_classicBackgroundImageView;
+    UIImageView *_classicIOS6SelectedBackgroundImageView;
+}
+
+@end
+
+static LGGroupedCellPosition TGCollectionItemViewGroupedPosition(int itemPosition)
+{
+    if ((itemPosition & TGCollectionItemViewPositionFirstInBlock) && (itemPosition & TGCollectionItemViewPositionLastInBlock))
+        return LGGroupedCellPositionSingle;
+    if (itemPosition & TGCollectionItemViewPositionFirstInBlock)
+        return LGGroupedCellPositionTop;
+    if (itemPosition & TGCollectionItemViewPositionLastInBlock)
+        return LGGroupedCellPositionBottom;
+    return LGGroupedCellPositionMiddle;
+}
+
+static UIImage *TGCollectionItemViewClassicIOS6Image(int itemPosition, bool selected, TGPresentation *presentation)
+{
+    if (itemPosition == 0)
+        return nil;
+
+    if (false)
+        return [LGSettingsCell legacyGroupedBackgroundImageForPosition:TGCollectionItemViewGroupedPosition(itemPosition) selected:selected theme:[LGTheme brandedTheme]];
+
+    NSString *name = nil;
+    if ((itemPosition & TGCollectionItemViewPositionFirstInBlock) && (itemPosition & TGCollectionItemViewPositionLastInBlock))
+        name = @"GroupedCellSingle";
+    else if (itemPosition & TGCollectionItemViewPositionFirstInBlock)
+        name = @"GroupedCellTop";
+    else if (itemPosition & TGCollectionItemViewPositionLastInBlock)
+        name = @"GroupedCellBottom";
+    else
+        name = @"GroupedCellMiddle";
+
+    if (selected)
+        name = [name stringByAppendingString:@"_Selected"];
+
+    UIImage *image = [TGPresentation classicIOS6ResourceImage:name];
+    if (image == nil)
+        return nil;
+
+    if (presentation.pallete.isDark)
+    {
+        UIColor *tintColor = selected ? presentation.pallete.collectionMenuCellSelectionColor : presentation.pallete.collectionMenuCellBackgroundColor;
+        image = [TGPresentation classicIOS6ThemedImage:image tintColor:tintColor alpha:selected ? 0.78f : 0.88f];
+    }
+
+    return [image stretchableImageWithLeftCapWidth:(int)floor(image.size.width / 2.0f) topCapHeight:(int)floor(image.size.height / 2.0f)];
+}
+
+@implementation TGCollectionItemView
+
+- (id)initWithFrame:(CGRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self)
+    {
+        _itemPosition = 1 << 31;
+        _separatorInset = 15.0f;
+        _classicIOS6HorizontalInset = 9.0f;
+        
+        self.backgroundView = [[UIView alloc] init];
+        _classicBackgroundImageView = [[UIImageView alloc] init];
+        _classicBackgroundImageView.userInteractionEnabled = false;
+        [self.backgroundView addSubview:_classicBackgroundImageView];
+        
+        self.selectedBackgroundView = [[UIView alloc] init];
+        _classicIOS6SelectedBackgroundImageView = [[UIImageView alloc] init];
+        _classicIOS6SelectedBackgroundImageView.userInteractionEnabled = false;
+        [self.selectedBackgroundView addSubview:_classicIOS6SelectedBackgroundImageView];
+        
+        if (_topStripeView == nil)
+        {
+            _topStripeView = [[UIView alloc] init];
+            [self.backgroundView addSubview:_topStripeView];
+        }
+        
+        if (_bottomStripeView == nil)
+        {
+            _bottomStripeView = [[UIView alloc] init];
+            [self.backgroundView addSubview:_bottomStripeView];
+        }
+    }
+    return self;
+}
+
+- (void)setPresentation:(TGPresentation *)presentation
+{
+    _presentation = presentation;
+    
+    _topStripeView.backgroundColor = presentation.pallete.collectionMenuSeparatorColor;
+    _bottomStripeView.backgroundColor = presentation.pallete.collectionMenuSeparatorColor;
+    [self _updateStripes];
+}
+
+- (void)setHighlightDisabled:(bool)highlightDisabled
+{
+    _highlightDisabled = highlightDisabled;
+    [self _updateStripes];
+}
+
+- (void)setItemPosition:(int)itemPosition
+{
+    [self setItemPosition:itemPosition animated:false];
+}
+
+- (void)setItemPosition:(int)itemPosition animated:(bool)animated
+{
+    if (_itemPosition != itemPosition)
+    {
+        _itemPosition = itemPosition;
+        if (animated)
+        {
+            [UIView animateWithDuration:0.25 animations:^
+            {
+                [self _updateStripes];
+            }];
+            [self setNeedsLayout];
+        }
+        else
+        {
+            [self _updateStripes];
+            [self setNeedsLayout];
+        }
+    }
+}
+
+- (LGSettingsAppearance *)effectiveBrandedGroupedAppearance
+{
+    return _brandedGroupedAppearance ?: [LGTheme brandedTheme].settingsAppearance;
+}
+
+- (void)setBrandedGroupedAppearance:(LGSettingsAppearance *)brandedGroupedAppearance
+{
+    if (_brandedGroupedAppearance == brandedGroupedAppearance)
+        return;
+    _brandedGroupedAppearance = brandedGroupedAppearance;
+    [self _updateStripes];
+    [self setNeedsLayout];
+}
+
+- (bool)usesBrandedGroupedSurface
+{
+    return _itemPosition != 0 && false && [self effectiveBrandedGroupedAppearance].groupedMiddleSurfaceStyle != nil;
+}
+
+- (CGRect)classicIOS6GroupedFrame
+{
+    CGSize viewSize = self.bounds.size;
+    if (!false || _itemPosition == 0)
+        return CGRectMake(0.0f, 0.0f, viewSize.width, viewSize.height);
+    CGFloat defaultHorizontalInset = false ? [self effectiveBrandedGroupedAppearance].groupedHorizontalInset : 9.0f;
+    CGFloat horizontalInset = _classicIOS6HorizontalInset > FLT_EPSILON ? _classicIOS6HorizontalInset : defaultHorizontalInset;
+    CGFloat leftInset = horizontalInset + self.safeAreaInset.left;
+    CGFloat rightInset = horizontalInset + self.safeAreaInset.right;
+    return CGRectMake(leftInset, 0.0f, MAX(0.0f, viewSize.width - leftInset - rightInset), viewSize.height);
+}
+
+- (UIColor *)cellBackgroundColor
+{
+    return _presentation.pallete.collectionMenuCellBackgroundColor;
+}
+
+- (void)setIgnoreSeparatorInset:(bool)ignoreSeparatorInset
+{
+    _ignoreSeparatorInset = ignoreSeparatorInset;
+    [self setNeedsLayout];
+}
+
+- (void)_updateStripes
+{
+    bool classicThemeStyle = false && _itemPosition != 0;
+    if (classicThemeStyle)
+    {
+        bool brandedGroupedSurface = [self usesBrandedGroupedSurface];
+        _classicBackgroundImageView.image = brandedGroupedSurface ? nil : TGCollectionItemViewClassicIOS6Image(_itemPosition, false, _presentation);
+        _classicIOS6SelectedBackgroundImageView.image = self.highlightDisabled || brandedGroupedSurface ? nil : TGCollectionItemViewClassicIOS6Image(_itemPosition, true, _presentation);
+        [self setNeedsLayout];
+        _classicBackgroundImageView.hidden = false;
+        _classicIOS6SelectedBackgroundImageView.hidden = self.highlightDisabled;
+        _topStripeView.alpha = 0.0f;
+        _bottomStripeView.alpha = 0.0f;
+        self.backgroundView.backgroundColor = [UIColor clearColor];
+        self.selectedBackgroundView.backgroundColor = [UIColor clearColor];
+    }
+    else
+    {
+        _classicBackgroundImageView.image = nil;
+        _classicIOS6SelectedBackgroundImageView.image = nil;
+        _classicBackgroundImageView.hidden = true;
+        _classicIOS6SelectedBackgroundImageView.hidden = true;
+        _topStripeView.alpha = (_itemPosition & (TGCollectionItemViewPositionFirstInBlock | TGCollectionItemViewPositionLastInBlock | TGCollectionItemViewPositionMiddleInBlock)) == 0 ? 0.0f : 1.0f;
+        _bottomStripeView.alpha = (_itemPosition & (TGCollectionItemViewPositionLastInBlock | TGCollectionItemViewPositionIncludeNextSeparator)) == 0 ? 0.0f : 1.0f;
+        self.backgroundView.backgroundColor = _itemPosition == 0 ? [UIColor clearColor] : [self cellBackgroundColor];
+        self.selectedBackgroundView.backgroundColor = self.highlightDisabled ? [UIColor clearColor] : _presentation.pallete.collectionMenuCellSelectionColor;
+    }
+}
+
+static void adjustSelectedBackgroundViewFrame(CGSize viewSize, int positionMask, UIEdgeInsets selectionInsets, UIView *backgroundView)
+{
+    CGRect frame = backgroundView.frame;
+    
+    CGFloat stripeHeight = TGScreenPixel;
+    
+    if ((positionMask & TGCollectionItemViewPositionFirstInBlock) && (positionMask & TGCollectionItemViewPositionLastInBlock))
+    {
+        frame.origin.y = 0;
+        frame.size.height = viewSize.height;
+    }
+    else if (positionMask & (TGCollectionItemViewPositionLastInBlock | TGCollectionItemViewPositionIncludeNextSeparator))
+    {
+        frame.origin.y = 0;
+        frame.size.height = viewSize.height;
+    }
+    else if (positionMask & TGCollectionItemViewPositionFirstInBlock)
+    {
+        frame.origin.y = 0;
+        frame.size.height = viewSize.height + stripeHeight;
+    }
+    else
+    {
+        frame.origin.y = 0;
+        frame.size.height = viewSize.height + stripeHeight;
+    }
+    
+    frame.origin.y -= selectionInsets.top;
+    frame.size.height += selectionInsets.top + selectionInsets.bottom;
+
+    backgroundView.frame = frame;
+}
+
+- (void)setSelected:(BOOL)selected
+{
+    [super setSelected:selected];
+    
+    if (selected)
+    {
+        adjustSelectedBackgroundViewFrame(self.frame.size, _itemPosition, _selectionInsets, self.selectedBackgroundView);
+        
+        [self adjustOrdering];
+    }
+}
+
+- (void)setHighlighted:(BOOL)highlighted
+{
+    [super setHighlighted:highlighted];
+    
+    if (highlighted)
+    {
+        adjustSelectedBackgroundViewFrame(self.frame.size, _itemPosition, _selectionInsets, self.selectedBackgroundView);
+        
+        [self adjustOrdering];
+    }
+}
+
+- (void)adjustOrdering
+{
+    Class UITableViewCellClass = [PSUICollectionViewCell class];
+    Class UISearchBarClass = [UISearchBar class];
+    int maxCellIndex = 0;
+    int index = -1;
+    int selfIndex = 0;
+    for (UIView *view in self.superview.subviews)
+    {
+        index++;
+        if ([view isKindOfClass:UITableViewCellClass] || [view isKindOfClass:UISearchBarClass])
+        {
+            maxCellIndex = index;
+            
+            if (view == self)
+                selfIndex = index;
+        }
+    }
+    
+    if (selfIndex < maxCellIndex)
+    {
+        [self.superview insertSubview:self atIndex:maxCellIndex];
+    }
+}
+
+- (void)setSafeAreaInset:(UIEdgeInsets)safeAreaInset
+{
+    _safeAreaInset = safeAreaInset;
+    [self setNeedsLayout];
+}
+
+- (void)layoutSubviews
+{
+    [super layoutSubviews];
+    
+    CGSize viewSize = self.bounds.size;
+    
+    adjustSelectedBackgroundViewFrame(viewSize, _itemPosition, _selectionInsets, self.selectedBackgroundView);
+    
+    static CGFloat stripeHeight = 0.0f;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        stripeHeight = TGScreenPixel;
+    });
+    
+    if (false && _itemPosition != 0)
+    {
+        CGRect groupedFrame = [self classicIOS6GroupedFrame];
+        CGFloat leftInset = groupedFrame.origin.x;
+        CGFloat width = groupedFrame.size.width;
+        if ([self usesBrandedGroupedSurface])
+        {
+            LGTheme *theme = [LGTheme brandedTheme];
+            LGSettingsAppearance *appearance = [self effectiveBrandedGroupedAppearance];
+            LGGroupedCellPosition position = TGCollectionItemViewGroupedPosition(_itemPosition);
+            UIEdgeInsets outsets = UIEdgeInsetsZero;
+            _classicBackgroundImageView.image = [LGSettingsCell legacyGroupedSurfaceImageForPosition:position selected:false size:CGSizeMake(width, viewSize.height) appearance:appearance theme:theme outsets:&outsets];
+            _classicBackgroundImageView.frame = CGRectMake(leftInset - outsets.left, -outsets.top, width + outsets.left + outsets.right, viewSize.height + outsets.top + outsets.bottom);
+            CGFloat selectedHeight = self.selectedBackgroundView.bounds.size.height;
+            _classicIOS6SelectedBackgroundImageView.image = self.highlightDisabled ? nil : [LGSettingsCell legacyGroupedSurfaceImageForPosition:position selected:true size:CGSizeMake(width, selectedHeight) appearance:appearance theme:theme outsets:&outsets];
+            _classicIOS6SelectedBackgroundImageView.frame = CGRectMake(leftInset - outsets.left, -outsets.top, width + outsets.left + outsets.right, selectedHeight + outsets.top + outsets.bottom);
+            return;
+        }
+        _classicBackgroundImageView.frame = CGRectMake(leftInset, 0.0f, width, viewSize.height);
+        _classicIOS6SelectedBackgroundImageView.frame = CGRectMake(leftInset, 0.0f, width, self.selectedBackgroundView.bounds.size.height);
+        return;
+    }
+
+    CGFloat separatorInset = !_ignoreSeparatorInset ? _separatorInset + self.safeAreaInset.left : 0.0f;
+    
+    if (_itemPosition & TGCollectionItemViewPositionFirstInBlock)
+        _topStripeView.frame = CGRectMake(0, 0, viewSize.width, stripeHeight);
+    else
+        _topStripeView.frame = CGRectMake(separatorInset, 0, viewSize.width - separatorInset, stripeHeight);
+    
+    if (_itemPosition & TGCollectionItemViewPositionLastInBlock)
+        _bottomStripeView.frame = CGRectMake(0, viewSize.height - stripeHeight, viewSize.width, stripeHeight);
+    else if (_itemPosition & TGCollectionItemViewPositionIncludeNextSeparator)
+        _bottomStripeView.frame = CGRectMake(separatorInset, viewSize.height - stripeHeight, viewSize.width - separatorInset, stripeHeight);
+}
+
+@end

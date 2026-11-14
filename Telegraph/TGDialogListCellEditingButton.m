@@ -1,0 +1,259 @@
+#import "TGDialogListCellEditingButton.h"
+#import "../LightGramPlatform/LGPlatformGraphics.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import <Lottie.h>
+#import <QuartzCore/QuartzCore.h>
+
+#import "TGPresentation.h"
+
+@interface TGDialogListCellEditingButton () {
+    UILabel *_labelView;
+    UIImageView *_iconView;
+    NSString *_animationName;
+    
+    LOTAnimationView *_animationView;
+    
+    bool _triggered;
+}
+
+@end
+
+@implementation TGDialogListCellEditingButton
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self != nil) {
+        _labelView = [[UILabel alloc] init];
+        _labelView.backgroundColor = nil;
+        _labelView.opaque = false;
+        _labelView.textColor = [UIColor whiteColor];
+        
+        static UIFont *font;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            font = TGMediumSystemFontOfSize(13.0f);
+        });
+        
+        _labelView.font = font;
+        [self addSubview:_labelView];
+        
+        _iconView = [[UIImageView alloc] init];
+        [self addSubview:_iconView];
+    }
+    return self;
+}
+
+- (void)setLabelOnly:(bool)labelOnly {
+    _labelOnly = labelOnly;
+    _labelView.font = TGMediumSystemFontOfSize(_labelOnly ? 18.0f : 13.0f);
+}
+
+- (void)setSmallLabel:(bool)smallLabel {
+    _smallLabel = smallLabel;
+    _labelView.font = TGMediumSystemFontOfSize(_smallLabel ? 14.0f : (_labelOnly ? 18.0f : 13.0f));
+}
+
+- (void)setTitle:(NSString *)title animationName:(NSString *)animationName fallbackImage:(UIImage *)image {
+    if (![_animationName isEqualToString:animationName]) {
+        [_animationView removeFromSuperview];
+        _animationView = nil;
+    }
+    [_animationView stop];
+    _animationView.hidden = true;
+    _iconView.image = image;
+    _iconView.hidden = _labelOnly;
+    [self og_compat_restLabel];
+    _labelView.text = title;
+    [_labelView sizeToFit];
+    
+    _animationName = animationName;
+    
+    [self setNeedsLayout];
+}
+
+- (LOTAnimationView *)animationView
+{
+    if (_animationName.length == 0)
+        return nil;
+
+    LOTAnimationView *animationView = [LOTAnimationView animationNamed:_animationName];
+    LOTComposition *model = animationView.sceneModel;
+    if (model == nil || model.compBounds.size.width <= 0.0f || model.compBounds.size.height <= 0.0f || model.endFrame.doubleValue <= model.startFrame.doubleValue || model.framerate.doubleValue <= 0.0f)
+        return nil;
+
+    animationView.transform = CGAffineTransformMakeScale(0.3333f, 0.3333f);
+    animationView.userInteractionEnabled = false;
+    return animationView;
+}
+
+- (void)playAnimation {
+    if (_labelOnly)
+        return;
+    
+    if (_animationName.length == 0)
+        return;
+    
+    if (_animationView == nil) {
+        _animationView = [self animationView];
+        if (_animationView == nil) {
+            [self og_compat_restLabel];
+            _iconView.hidden = _labelOnly;
+            return;
+        }
+        [self addSubview:_animationView];
+        [self setNeedsLayout];
+        [self layoutIfNeeded];
+    }
+    
+    _iconView.hidden = true;
+    if (_animationView.isAnimationPlaying)
+        return;
+    _animationView.hidden = false;
+    
+    _labelView.transform = CGAffineTransformMakeScale(0.4f, 0.4f);
+    [UIView animateWithDuration:0.2 animations:^
+    {
+        _labelView.transform = CGAffineTransformIdentity;
+        _labelView.alpha = 1.0f;
+    }];
+    
+    [self fixAnimation];
+    
+    __weak TGDialogListCellEditingButton *weakSelf = self;
+    __weak LOTAnimationView *currentAnimationView = _animationView;
+    [_animationView playWithCompletion:^(BOOL finished) {
+        __strong TGDialogListCellEditingButton *strongSelf = weakSelf;
+        if (finished && strongSelf != nil && strongSelf->_animationView == currentAnimationView) {
+            strongSelf->_animationView.hidden = true;
+            strongSelf->_iconView.hidden = strongSelf->_labelOnly;
+        }
+    }];
+}
+
+- (void)resetAnimation {
+    if (_triggered)
+    {
+        _triggered = false;
+        [self setNeedsLayout];
+    }
+    
+    [_animationView stop];
+    _animationView.hidden = true;
+    [self og_compat_restLabel];
+    _iconView.hidden = _labelOnly;
+}
+
+- (void)og_compat_restLabel {
+    _labelView.alpha = 1.0f;
+    _labelView.transform = CGAffineTransformIdentity;
+}
+
+- (void)skipAnimation {
+    [_animationView stop];
+    _animationView.hidden = true;
+    [self og_compat_restLabel];
+    _iconView.hidden = _labelOnly;
+}
+
+- (void)fixAnimation {
+    if ([_animationName rangeOfString:@"unpin"].location != NSNotFound || [_animationName rangeOfString:@"mute"].location != NSNotFound || [_animationName rangeOfString:@"ungroup"].location != NSNotFound) {
+        NSString *key = @"un Outlines.Group 1.Stroke 1";
+        LOTColorValueCallback *colorCallback = [LOTColorValueCallback withCGColor:self.backgroundColor.CGColor];
+        [_animationView setValueDelegate:colorCallback forKeypath:[LOTKeypath keypathWithString:[key stringByAppendingString:@".Color"]]];
+    }
+    else if ([_animationName rangeOfString:@"unread"].location != NSNotFound) {
+        NSString *key = @"Oval.Oval.Stroke 1";
+        LOTColorValueCallback *colorCallback = [LOTColorValueCallback withCGColor:self.backgroundColor.CGColor];
+        [_animationView setValueDelegate:colorCallback forKeypath:[LOTKeypath keypathWithString:[key stringByAppendingString:@".Color"]]];
+    }
+}
+
+- (void)setTitle:(NSString *)title image:(UIImage *)image {
+    _animationName = nil;
+    [_animationView stop];
+    [_animationView removeFromSuperview];
+    _animationView = nil;
+    
+    [self og_compat_restLabel];
+    _labelView.text = title;
+    [_labelView sizeToFit];
+    
+    _iconView.hidden = _labelOnly;
+    _iconView.image = image;
+    [self setNeedsLayout];
+}
+
+- (bool)triggered {
+    return _triggered;
+}
+
+- (void)setTriggered:(bool)triggered {
+    [self setTriggered:triggered animated:false];
+}
+
+- (void)setTriggered:(bool)triggered animated:(bool)animated {
+    if (triggered == _triggered)
+        return;
+    
+    _triggered = triggered;
+    
+    if (animated)
+    {
+        [UIView animateWithDuration:0.3 delay:0.0 options:7 << 16 animations:^{
+            [self layoutSubviews];
+        } completion:nil];
+    }
+    else
+    {
+        [self setNeedsLayout];
+    }
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    
+    CGRect bounds = self.bounds;
+    CGFloat buttonWidth = self.buttonWidth;
+    
+    CGSize iconSize = _iconView.image.size;
+    
+    if (false && !_labelOnly)
+    {
+        _labelView.font = TGBoldSystemFontOfSize(8.0f);
+        [_labelView sizeToFit];
+        _labelView.textColor = [UIColor whiteColor];
+        _labelView.shadowColor = UIColorRGBA(0x000000, 0.40f);
+        _labelView.shadowOffset = CGSizeMake(0.0f, 1.0f);
+        LGPlatformApplyViewShadow(_iconView, [UIColor blackColor], 0.30f, 1.0f, CGSizeMake(0.0f, 1.0f));
+    }
+
+    CGSize labelSize = _labelView.bounds.size;
+    CGFloat labelY = false && !_labelOnly ? 39.0f : (_labelOnly ? 17.0f : 49.0f);
+    if (_smallLabel) {
+        labelY = 15.0f;
+    } else if (_offsetLabel) {
+        labelY = 14.0f;
+    }
+    
+    CGFloat offset = _triggered ? bounds.size.width - buttonWidth : 0.0f;
+    _labelView.center = CGPointMake(offset + buttonWidth / 2.0f, labelY + labelSize.height / 2.0f);
+    if (false && !_labelOnly)
+        iconSize = CGSizeMake(18.0f, 18.0f);
+    _iconView.frame = CGRectMake(offset + CGFloor((buttonWidth - iconSize.width) / 2.0f), false && !_labelOnly ? 17.0f : 14.0f, iconSize.width, iconSize.height);
+    _animationView.center = CGPointMake(offset + buttonWidth / 2.0f, bounds.size.height / 2.0f - 2.0f);
+}
+
+- (void)setBackgroundColor:(UIColor *)backgroundColor {
+    [self setBackgroundColor:backgroundColor force:false];
+}
+
+- (void)setBackgroundColor:(UIColor *)backgroundColor force:(bool)force {
+    if (force) {
+        [super setBackgroundColor:backgroundColor];
+        [self fixAnimation];
+    }
+}
+
+@end

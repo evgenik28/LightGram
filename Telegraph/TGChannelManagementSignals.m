@@ -1,0 +1,1906 @@
+#import "TGChannelManagementSignals.h"
+
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+#import "../submodules/LegacyComponents/SSignalKitCompat/SMulticastSignalManager.h"
+
+#import "TL/TLMetaScheme.h"
+#import "TGTelegramNetworking.h"
+#import "../LightGramRuntime/LGRuntime.h"
+
+#import "TLUpdates+TG.h"
+#import "TGDatabase.h"
+#import "TGTelegraph.h"
+#import "TGCommon.h"
+
+#import "TGConversation+Telegraph.h"
+#import "TGMessage+Telegraph.h"
+#import "TGUser+Telegraph.h"
+
+#import "TGUserDataRequestBuilder.h"
+
+#import "TLmessages_Messages$modernChannelMessages.h"
+#import "TLUpdates_ChannelDifference_manual.h"
+#import "TLPeerNotifySettings$peerNotifySettings.h"
+
+#import "TGUpdateStateRequestBuilder.h"
+
+#import "TLChat$channel.h"
+#import "TLInputPeer.h"
+
+#import "TGChannelStateSignals.h"
+#import "TGDownloadMessagesSignal.h"
+
+#import "TLChatFull$channelFull.h"
+
+#import "TGBotSignals.h"
+#import "TGStickersSignals.h"
+
+#import "TLRPCmessages_editMessage.h"
+#import "TGIOS6MessageViewsRpc.h"
+#import "TGDatabaseUpdateMessage.h"
+
+#import "TLUpdate$updateChannelTooLong.h"
+
+#import "TGChannelBannedRights+Telegraph.h"
+#import "TGChannelAdminRights+Telegraph.h"
+
+#import "TLRPCchannels_getAdminLog.h"
+#import "TLRPCmessages_markDialogUnread.h"
+#import "../LightGramRuntime/LGRemoteClock.h"
+
+static SMulticastSignalManager *OGCompatExtendedInfoManager = nil;
+
+static SMulticastSignalManager *OGCompatExtendedInfoManagerAccessor(void)
+{
+    @synchronized ([TGChannelManagementSignals class])
+    {
+        if (OGCompatExtendedInfoManager == nil)
+            OGCompatExtendedInfoManager = [[SMulticastSignalManager alloc] init];
+        return OGCompatExtendedInfoManager;
+    }
+}
+
+static inline int64_t OGCompatChannelAccessHash(int64_t peerId, int64_t accessHash)
+{
+    TGConversation *storedConversation = [TGDatabaseInstance() loadConversationWithId:peerId];
+    int64_t storedHash = storedConversation != nil ? storedConversation.accessHash : 0;
+    if (storedHash == 0 || storedHash == accessHash)
+        return accessHash;
+
+    TGLog(@"AUTH channel accessHash repair peer=%lld old=%lld db=%lld", peerId, accessHash, storedHash);
+    return storedHash;
+}
+
+static inline TLInputPeer$inputPeerChannel *OGCompatChannelInputPeer(int64_t peerId, int64_t accessHash)
+{
+    TLInputPeer$inputPeerChannel *inputPeer = [[TLInputPeer$inputPeerChannel alloc] init];
+    inputPeer.channel_id = TGChannelIdFromPeerId(peerId);
+    inputPeer.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    return inputPeer;
+}
+
+static inline bool OGCompatChannelIsFlaggedInvalid(int64_t peerId)
+{
+    return [TGDatabaseInstance() conversationCustomPropertySync:peerId name:murMurHash32(@"ios6InvalidPeer")].length != 0;
+}
+
+static inline void OGCompatClearInvalidChannelFlag(int64_t peerId)
+{
+    [TGDatabaseInstance() setConversationCustomProperty:peerId name:murMurHash32(@"ios6InvalidPeer") value:nil];
+}
+
+static inline void OGCompatMarkChannelInvalidPeer(int64_t peerId, NSString *reason)
+{
+    uint8_t marker = 1;
+    [TGDatabaseInstance() setConversationCustomProperty:peerId name:murMurHash32(@"ios6InvalidPeer") value:[NSData dataWithBytes:&marker length:1]];
+    TGLog(@"FULL channel.markInvalidPeer peer=%lld reason=%@", peerId, reason);
+}
+
+static bool OGCompatPeerHashMissing(TLInputPeer$inputPeerChannel *peer)
+{
+    return peer.access_hash == 0;
+}
+
+static TGMessageHole *OGCompatZeroHole()
+{
+    return [[TGMessageHole alloc] initWithMinId:0 minTimestamp:0 maxId:0 maxTimestamp:0];
+}
+
+static NSDictionary *OGCompatHoleResult(NSArray *messages, TGMessageHole *hole, NSArray *groups, int32_t pts)
+{
+    return @{@"messages": messages, @"hole": hole, @"unimportantGroups": groups, @"pts": @(pts)};
+}
+
+static bool OGCompatChannelGoneError(NSString *errorType)
+{
+    return [errorType isEqual:@"PEER_ID_INVALID"] || [errorType isEqual:@"CHAT_ID_INVALID"] || [errorType isEqual:@"CHANNEL_INVALID"];
+}
+
+static SSignal *OGCompatConfirmedReadSignal(id request, TGQueuedReadChannelMessages *queued)
+{
+    SSignal *rpc = [[TGTelegramNetworking instance] requestSignal:request];
+    return [[rpc mapToSignal:^SSignal *(__unused id result) {
+        [TGDatabaseInstance() confirmChannelHistoryRead:queued];
+        return [SSignal complete];
+    }] catch:^SSignal *(__unused id error) {
+        [TGDatabaseInstance() confirmChannelHistoryRead:queued];
+        return [SSignal complete];
+    }];
+}
+
+static void OGCompatStoreHistoryChannels(NSArray *chats)
+{
+    if (chats.count == 0)
+        return;
+
+    NSMutableArray *channels = [[NSMutableArray alloc] initWithCapacity:chats.count];
+    for (TLChat *chat in chats)
+    {
+        TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:chat];
+        if (conversation != nil && TGPeerIdIsChannel(conversation.conversationId))
+        {
+            OGCompatClearInvalidChannelFlag(conversation.conversationId);
+            [channels addObject:conversation];
+        }
+    }
+
+    if (channels.count != 0)
+        [TGDatabaseInstance() updateChannels:channels];
+}
+
+@implementation TGChannelManagementSignals
+
++ (TLInputChannel *)inputChannelForPeerId:(int64_t)peerId accessHash:(int64_t)accessHash
+{
+    int64_t channelId = TGChannelIdFromPeerId(peerId);
+    if (channelId == 0)
+        return nil;
+
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    inputChannel.channel_id = channelId;
+    return inputChannel;
+}
+
++ (void)storeChannelChats:(NSArray *)chats
+{
+    OGCompatStoreHistoryChannels(chats);
+}
+
++ (SSignal *)makeChannelWithTitle:(NSString *)title about:(NSString *)about group:(bool)group
+{
+    TLRPCchannels_createChannel$channels_createChannel *createChannel = [[TLRPCchannels_createChannel$channels_createChannel alloc] init];
+    createChannel.title = title;
+    if (group) {
+        createChannel.flags = (1 << 1);
+    } else {
+        createChannel.flags = (1 << 0);
+    }
+    createChannel.about = about;
+    return [[[TGTelegramNetworking instance] requestSignal:createChannel continueOnServerErrors:false failOnFloodErrors:true] mapToSignal:^SSignal *(TLUpdates *updates) {
+        TLChat *chat = [updates chats].firstObject;
+        if (chat == nil) {
+            return [SSignal fail:nil];
+        } else {
+            TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:chat];
+            if (conversation.conversationId == 0)
+                return [SSignal fail:nil];
+            else
+            {
+                return [[TGDatabaseInstance() modifyChannel:conversation.conversationId block:^id(__unused int32_t pts) {
+                    [TGDatabaseInstance() initializeChannel:conversation];
+                    [TGChannelStateSignals addChannelUpdates:conversation.conversationId updates:updates.updatesList];
+                    
+                    return [[[[TGDatabaseInstance() existingChannel:conversation.conversationId] take:1] mapToSignal:^SSignal *(TGConversation *next) {
+                        
+                        return [SSignal single:next];
+                    }] timeout:6.0 onQueue:[SQueue concurrentDefaultQueue] orSignal:[SSignal fail:nil]];
+                }] switchToLatest];
+            }
+        }
+    }];
+}
+
++ (SSignal *)preloadChannelTail:(int64_t)peerId accessHash:(int64_t)accessHash important:(bool)important {
+    TGMessageHole *hole = [[TGMessageHole alloc] initWithMinId:1 minTimestamp:1 maxId:INT32_MAX maxTimestamp:INT32_MAX];
+    
+    [TGDatabaseInstance() addMessagesToChannel:peerId messages:nil deleteMessages:nil unimportantGroups:nil addedHoles:@[hole] removedHoles:nil removedUnimportantHoles:nil updatedMessageSortKeys:nil returnGroups:false keepUnreadCounters:false skipFeedUpdate:true changedMessages:nil];
+    
+    return [[self channelMessageHoleForPeerId:peerId accessHash:accessHash hole:hole direction:TGChannelHistoryHoleDirectionEarlier important:important] mapToSignal:^SSignal *(NSDictionary *dict) {
+        NSArray *removedImportantHoles = dict[@"hole"] == nil ? nil : @[dict[@"hole"]];
+        NSArray *removedUnimportantHoles = nil;
+        
+        return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id {
+            [TGDatabaseInstance() addMessagesToChannel:peerId messages:dict[@"messages"] deleteMessages:nil unimportantGroups:dict[@"unimportantGroups"] addedHoles:nil removedHoles:removedImportantHoles removedUnimportantHoles:removedUnimportantHoles updatedMessageSortKeys:nil returnGroups:important keepUnreadCounters:false skipFeedUpdate:true changedMessages:nil];
+            if ([dict[@"pts"] intValue] > 0) {
+                [TGDatabaseInstance() addMessagesToChannelAndDispatch:peerId messages:nil deletedMessages:nil holes:nil pts:[dict[@"pts"] intValue] skipFeedUpdate:true];
+            }
+            
+            return [SSignal complete];
+        }] switchToLatest];
+    }];
+}
+
++ (SSignal *)addChannel:(TGConversation *)conversation {
+    return [[TGDatabaseInstance() modifyChannel:conversation.conversationId block:^id(int32_t pts) {
+        [TGDatabaseInstance() updateChannels:@[conversation]];
+        
+        SSignal *signal = [SSignal complete];
+        
+        if (pts <= 1) {
+            signal = [self preloadChannelTail:conversation.conversationId accessHash:conversation.accessHash important:!conversation.isChannelGroup];
+        } else {
+            signal = [[TGChannelStateSignals pollOnce:conversation.conversationId] mapToSignal:^SSignal *(__unused id next) {
+                return [SSignal complete];
+            }];
+        }
+
+        return [signal then:[[[[TGDatabaseInstance() existingChannel:conversation.conversationId] take:1] mapToSignal:^SSignal *(TGConversation *next) {
+            
+            return [SSignal single:next];
+        }] timeout:6.0 onQueue:[SQueue concurrentDefaultQueue] orSignal:[SSignal fail:nil]]];
+    }] switchToLatest];
+}
+
+static dispatch_block_t recursiveBlock(void (^block)(dispatch_block_t recurse))
+{
+    return ^
+    {
+        block(recursiveBlock(block));
+    };
+}
+
++ (bool)_containsPreloadedHistoryForPeerId:(int64_t)peerId aroundMessageId:(int32_t)messageId {
+    __block bool result = false;
+    [TGDatabaseInstance() dispatchOnDatabaseThread:^{
+        __block bool messageExists = false;
+        __block TGMessageSortKey messageSortKey;
+        
+        [TGDatabaseInstance() closestChannelMessageKey:peerId messageId:messageId completion:^(bool exists, TGMessageSortKey key) {
+            messageExists = exists;
+            messageSortKey = key;
+        }];
+        
+        if (!messageExists) {
+            result = false;
+        } else {
+            __block bool hasHoles = false;
+            [TGDatabaseInstance() channelMessages:peerId maxTransparentSortKey:TGMessageTransparentSortKeyMake(peerId, TGMessageSortKeyTimestamp(messageSortKey), messageId, TGMessageSortKeySpace(messageSortKey)) count:30 important:false mode:TGChannelHistoryRequestLater completion:^(NSArray *messages, __unused bool hasLater) {
+                for (TGMessage *message in messages) {
+                    if (message.hole != nil) {
+                        hasHoles = true;
+                        break;
+                    }
+                }
+            }];
+            
+            if (!hasHoles) {
+                result = true;
+            } else {
+                result = false;
+            }
+        }
+    } synchronous:true];
+    
+    return result;
+}
+
++ (SSignal *)messagesWithDownloadedReplyMessages:(int64_t)peerId accessHash:(int64_t)accessHash messages:(NSArray *)messages {
+    return [SSignal defer:^SSignal *{
+        NSMutableDictionary *addedMessageIdToMessage = [[NSMutableDictionary alloc] init];
+        for (TGMessage *message in messages) {
+            addedMessageIdToMessage[@(message.mid)] = message;
+        }
+        
+        for (TGMessage *message in messages) {
+            if (message.mediaAttachments.count != 0) {
+                for (id attachment in message.mediaAttachments) {
+                    if ([attachment isKindOfClass:[TGReplyMessageMediaAttachment class]]) {
+                        TGReplyMessageMediaAttachment *replyAttachment = attachment;
+                        if (replyAttachment.replyMessage == nil && replyAttachment.replyMessageId != 0) {
+                            TGMessage *replyMessage = addedMessageIdToMessage[@(replyAttachment.replyMessageId)];
+                            if (replyMessage != nil) {
+                                replyAttachment.replyMessage = replyMessage;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return [SSignal single:messages];
+    }];
+}
+
++ (SSignal *)preloadedHistoryForPeerId:(int64_t)peerId accessHash:(int64_t)accessHash aroundMessageId:(int32_t)messageId {
+    int32_t limit = 64;
+    
+    return [[TGDatabaseInstance() modifyChannel:peerId block:^id(__unused int32_t pts) {
+        __block bool messageExists = false;
+        __block TGMessageSortKey messageSortKey;
+        [TGDatabaseInstance() channelMessageExists:peerId messageId:messageId completion:^(bool exists, TGMessageSortKey key) {
+            messageExists = exists;
+            messageSortKey = key;
+        }];
+        
+        if (messageExists) {
+            __block bool hasHoles = false;
+            [TGDatabaseInstance() channelMessages:peerId maxTransparentSortKey:TGMessageTransparentSortKeyMake(peerId, TGMessageSortKeyTimestamp(messageSortKey), messageId, TGMessageSortKeySpace(messageSortKey)) count:30 important:false mode:TGChannelHistoryRequestAround completion:^(NSArray *messages, __unused bool hasLater) {
+                for (TGMessage *message in messages) {
+                    if (message.hole != nil) {
+                        hasHoles = true;
+                        break;
+                    }
+                }
+            }];
+            
+            if (!hasHoles) {
+                return [SSignal single:@{}];
+            }
+        }
+        
+        TLRPCmessages_getHistory$messages_getHistory *getHistory = [[TLRPCmessages_getHistory$messages_getHistory alloc] init];
+        TLInputPeer$inputPeerChannel *inputChannel = OGCompatChannelInputPeer(peerId, accessHash);
+        if (OGCompatPeerHashMissing(inputChannel))
+        {
+            return [SSignal single:@{}];
+        }
+        getHistory.peer = inputChannel;
+        getHistory.min_id = 1;
+        getHistory.max_id = INT32_MAX;
+        getHistory.offset_id = messageId;
+        getHistory.add_offset = -limit / 2;
+        getHistory.limit = limit;
+        
+        SSignal *historyRequest = [[TGTelegramNetworking instance] requestSignal:getHistory];
+        return [[historyRequest mapToSignal:^SSignal *(TLmessages_Messages *messages) {
+            [TGUserDataRequestBuilder executeUserDataUpdate:messages.users];
+            OGCompatStoreHistoryChannels(messages.chats);
+            
+            int32_t pts = 0;
+            NSArray *collapsed = nil;
+            if ([messages isKindOfClass:[TLmessages_Messages$modernChannelMessages class]]) {
+                TLmessages_Messages$modernChannelMessages *concreteMessages = (TLmessages_Messages$modernChannelMessages *)messages;
+                pts = concreteMessages.pts;
+                collapsed = concreteMessages.collapsed;
+            } else if ([messages isKindOfClass:[TLmessages_Messages$messages_channelMessages class]]) {
+                pts = ((TLmessages_Messages$messages_channelMessages *)messages).pts;
+            }
+            
+            int32_t minParsedId = 0;
+            int32_t maxParsedId = 0;
+            int32_t maxParsedDate = 0;
+            int32_t minParsedDate = 0;
+            NSMutableArray *parsedMessages = [[NSMutableArray alloc] init];
+            id replyPreload = [TGMessage beginReplyPreloadForTelegraphMessageDescs:messages.messages];
+            for (id desc in messages.messages) {
+                TGMessage *message = [[TGMessage alloc] initWithTelegraphMessageDesc:desc];
+                message.pts = pts;
+                if (message.mid != 0) {
+                    [parsedMessages addObject:message];
+                    if (minParsedId == 0 || minParsedId > message.mid) {
+                        minParsedId = message.mid;
+                        minParsedDate = (int32_t)message.date;
+                    }
+                    
+                    if (maxParsedId == 0 || maxParsedId < message.mid) {
+                        maxParsedId = message.mid;
+                        maxParsedDate = (int32_t)message.date;
+                    }
+                }
+            }
+            [TGMessage endReplyPreload:replyPreload];
+            
+            return [[self messagesWithDownloadedReplyMessages:peerId accessHash:accessHash messages:parsedMessages] mapToSignal:^SSignal *(NSArray *parsedMessages) {
+                TGMessageHole *closedHole = [[TGMessageHole alloc] initWithMinId:minParsedId minTimestamp:minParsedDate maxId:maxParsedId maxTimestamp:maxParsedDate];
+                
+                return [SSignal single:@{@"messages": parsedMessages, @"hole": closedHole}];
+            }];
+        }] catch:^SSignal *(id error) {
+            return [SSignal single:@{}];
+        }];
+    }] switchToLatest];
+}
+
++ (SSignal *)preloadedHistoryTailForPeerId:(int64_t)peerId accessHash:(int64_t)accessHash {
+    int32_t limit = 64;
+#if defined(LIGHTGRAM_ARMV6)
+    limit = 24;
+#endif
+    
+    return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^{
+        __block bool hasHoles = false;
+        __block int32_t loadedMessageCount = 0;
+        [TGDatabaseInstance() channelMessages:peerId maxTransparentSortKey:TGMessageTransparentSortKeyUpperBound(peerId) count:50 important:false mode:TGChannelHistoryRequestEarlier completion:^(NSArray *messages, __unused bool hasLater) {
+            loadedMessageCount = (int32_t)messages.count;
+            for (TGMessage *message in messages) {
+                if (message.hole != nil) {
+                    hasHoles = true;
+                    break;
+                }
+            }
+        }];
+        
+        if (loadedMessageCount >= 20 && !hasHoles) {
+            return [SSignal single:@{}];
+        }
+        TLRPCmessages_getHistory$messages_getHistory *getHistory = [[TLRPCmessages_getHistory$messages_getHistory alloc] init];
+        TLInputPeer$inputPeerChannel *inputChannel = OGCompatChannelInputPeer(peerId, accessHash);
+        if (OGCompatPeerHashMissing(inputChannel))
+        {
+            return [SSignal single:@{}];
+        }
+        getHistory.peer = inputChannel;
+        getHistory.offset_id = 0;
+        getHistory.add_offset = 0;
+        getHistory.max_id = 0;
+        getHistory.min_id = 0;
+        getHistory.limit = limit;
+        
+        SSignal *historyRequest = [[TGTelegramNetworking instance] requestSignal:getHistory];
+        return [[historyRequest mapToSignal:^SSignal *(TLmessages_Messages *messages) {
+            [TGUserDataRequestBuilder executeUserDataUpdate:messages.users];
+            OGCompatStoreHistoryChannels(messages.chats);
+            int32_t pts = 0;
+            NSArray *collapsed = nil;
+            if ([messages isKindOfClass:[TLmessages_Messages$modernChannelMessages class]]) {
+                TLmessages_Messages$modernChannelMessages *concreteMessages = (TLmessages_Messages$modernChannelMessages *)messages;
+                pts = concreteMessages.pts;
+                collapsed = concreteMessages.collapsed;
+            } else if ([messages isKindOfClass:[TLmessages_Messages$messages_channelMessages class]]) {
+                pts = ((TLmessages_Messages$messages_channelMessages *)messages).pts;
+            }
+            
+            int32_t minParsedId = 0;
+            int32_t maxParsedId = 0;
+            int32_t maxParsedDate = 0;
+            int32_t minParsedDate = 0;
+            NSMutableArray *parsedMessages = [[NSMutableArray alloc] init];
+            id replyPreload = [TGMessage beginReplyPreloadForTelegraphMessageDescs:messages.messages];
+            for (id desc in messages.messages) {
+                TGMessage *message = [[TGMessage alloc] initWithTelegraphMessageDesc:desc];
+                message.pts = pts;
+                if (message.mid != 0) {
+                    [parsedMessages addObject:message];
+                    if (minParsedId == 0 || minParsedId > message.mid) {
+                        minParsedId = message.mid;
+                        minParsedDate = (int32_t)message.date;
+                    }
+                    
+                    if (maxParsedId == 0 || maxParsedId < message.mid) {
+                        maxParsedId = message.mid;
+                        maxParsedDate = (int32_t)message.date;
+                    }
+                }
+            }
+            [TGMessage endReplyPreload:replyPreload];
+            SSignal *readyMessages = nil;
+#if defined(LIGHTGRAM_ARMV6)
+            readyMessages = [SSignal single:parsedMessages];
+#else
+            readyMessages = [self messagesWithDownloadedReplyMessages:peerId accessHash:accessHash messages:parsedMessages];
+#endif
+            return [readyMessages mapToSignal:^SSignal *(NSArray *readyParsedMessages) {
+                TGMessageHole *closedHole = [[TGMessageHole alloc] initWithMinId:minParsedId minTimestamp:minParsedDate maxId:maxParsedId maxTimestamp:maxParsedDate];
+                return [SSignal single:@{@"messages": readyParsedMessages, @"hole": closedHole}];
+            }];
+        }] catch:^SSignal *(id error) {
+            return [SSignal single:@{}];
+        }];
+    }] switchToLatest];
+}
+
++ (SSignal *)preloadedChannelAtMessage:(int64_t)peerId messageId:(int32_t)messageId {
+    SSignal *existing = [[TGDatabaseInstance() existingChannel:peerId] take:1];
+    SSignal *channelSignal = [[existing timeout:5.0 onQueue:[SQueue concurrentDefaultQueue] orSignal:[SSignal fail:nil]] catch:^SSignal *(id error) {
+        return [SSignal fail:error];
+    }];
+    
+    return [channelSignal mapToSignal:^SSignal *(TGConversation *conversation) {
+        if (messageId == 0) {
+            SSignal *historySignal = [[self preloadedHistoryTailForPeerId:peerId accessHash:conversation.accessHash] mapToSignal:^SSignal *(NSDictionary *dict) {
+                return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^{
+                    NSArray *removedImportantHoles = nil;
+                    NSArray *removedUnimportantHoles = nil;
+                    
+                    removedImportantHoles = dict[@"hole"] == nil ? nil : @[dict[@"hole"]];
+                    removedUnimportantHoles = dict[@"hole"] == nil ? nil : @[dict[@"hole"]];
+                    
+                    [TGDatabaseInstance() addMessagesToChannel:peerId messages:dict[@"messages"] deleteMessages:nil unimportantGroups:dict[@"unimportantGroups"] addedHoles:nil removedHoles:removedImportantHoles removedUnimportantHoles:removedUnimportantHoles updatedMessageSortKeys:nil returnGroups:false keepUnreadCounters:false skipFeedUpdate:true changedMessages:nil];
+                    
+                    return [SSignal complete];
+                }] switchToLatest];
+            }];
+            
+            return [[[TGDatabaseInstance() modifyChannel:peerId block:^id(int32_t pts) {
+                if (pts <= 1) {
+                    return [[self preloadChannelTail:peerId accessHash:conversation.accessHash important:!conversation.isChannelGroup] then:historySignal];
+                } else {
+                    return historySignal;
+                }
+            }] switchToLatest] then:channelSignal];
+        } else {
+            SSignal *historySignal = [[self preloadedHistoryForPeerId:peerId accessHash:conversation.accessHash aroundMessageId:messageId] mapToSignal:^SSignal *(NSDictionary *dict) {
+                return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^{
+                    NSArray *removedImportantHoles = nil;
+                    NSArray *removedUnimportantHoles = nil;
+                    
+                    removedImportantHoles = dict[@"hole"] == nil ? nil : @[dict[@"hole"]];
+                    removedUnimportantHoles = dict[@"hole"] == nil ? nil : @[dict[@"hole"]];
+                    
+                    [TGDatabaseInstance() addMessagesToChannel:peerId messages:dict[@"messages"] deleteMessages:nil unimportantGroups:dict[@"unimportantGroups"] addedHoles:nil removedHoles:removedImportantHoles removedUnimportantHoles:removedUnimportantHoles updatedMessageSortKeys:nil returnGroups:false keepUnreadCounters:false skipFeedUpdate:true changedMessages:nil];
+                    
+                    return [SSignal complete];
+                }] switchToLatest];
+            }];
+            
+            return [[[TGDatabaseInstance() modifyChannel:peerId block:^id(int32_t pts) {
+                if (pts <= 1) {
+                    return [[self preloadChannelTail:peerId accessHash:conversation.accessHash important:!conversation.isChannelGroup] then:historySignal];
+                } else {
+                    return historySignal;
+                }
+            }] switchToLatest] then:channelSignal];
+        }
+    }];
+}
+
++ (SSignal *)preloadedChannel:(int64_t)peerId {
+    return [self preloadedChannelAtMessage:peerId messageId:0];
+}
+
++ (SSignal *)channelMessageHoleForPeerId:(int64_t)peerId accessHash:(int64_t)accessHash hole:(TGMessageHole *)hole direction:(TGChannelHistoryHoleDirection)direction important:(bool)important {
+    
+    int32_t limit = 100;
+#ifdef DEBUG
+#endif
+    
+    id request = nil;
+    TLRPCmessages_getHistory$messages_getHistory *getHistory = [[TLRPCmessages_getHistory$messages_getHistory alloc] init];
+    TLInputPeer$inputPeerChannel *inputChannel = OGCompatChannelInputPeer(peerId, accessHash);
+    if (OGCompatPeerHashMissing(inputChannel))
+    {
+        return [SSignal single:@{}];
+    }
+    getHistory.peer = inputChannel;
+    getHistory.min_id = hole.minId - 1;
+    getHistory.max_id = hole.maxId == INT32_MAX ? hole.maxId : (hole.maxId + 1);
+    getHistory.limit = limit;
+    switch (direction) {
+        case TGChannelHistoryHoleDirectionEarlier:
+            getHistory.offset_id = getHistory.max_id;
+            getHistory.add_offset = 0;
+            break;
+        case TGChannelHistoryHoleDirectionLater:
+            getHistory.offset_id = getHistory.min_id;
+            getHistory.add_offset = -getHistory.limit;
+            break;
+    }
+    
+    request = getHistory;
+    
+    SSignal *holeRequest = [[TGTelegramNetworking instance] requestSignal:request];
+    return [[[holeRequest mapToSignal:^SSignal *(TLmessages_Messages *messages) {
+        [TGUserDataRequestBuilder executeUserDataUpdate:messages.users];
+        OGCompatStoreHistoryChannels(messages.chats);
+        int32_t pts = 0;
+        NSArray *collapsed = nil;
+        if ([messages isKindOfClass:[TLmessages_Messages$modernChannelMessages class]]) {
+            TLmessages_Messages$modernChannelMessages *concreteMessages = (TLmessages_Messages$modernChannelMessages *)messages;
+            pts = concreteMessages.pts;
+            collapsed = concreteMessages.collapsed;
+        } else if ([messages isKindOfClass:[TLmessages_Messages$messages_channelMessages class]]) {
+            pts = ((TLmessages_Messages$messages_channelMessages *)messages).pts;
+        }
+        
+        int32_t minParsedId = 0;
+        int32_t maxParsedId = 0;
+        int32_t maxParsedDate = 0;
+        int32_t minParsedDate = 0;
+        NSMutableArray *parsedMessages = [[NSMutableArray alloc] init];
+        id replyPreload = [TGMessage beginReplyPreloadForTelegraphMessageDescs:messages.messages];
+        for (id desc in messages.messages) {
+            TGMessage *message = [[TGMessage alloc] initWithTelegraphMessageDesc:desc];
+            message.pts = pts;
+            if (message.mid != 0) {
+                [parsedMessages addObject:message];
+                if (minParsedId == 0 || minParsedId > message.mid) {
+                    minParsedId = message.mid;
+                    minParsedDate = (int32_t)message.date;
+                }
+                
+                if (maxParsedId == 0 || maxParsedId < message.mid) {
+                    maxParsedId = message.mid;
+                    maxParsedDate = (int32_t)message.date;
+                }
+            }
+        }
+        [TGMessage endReplyPreload:replyPreload];
+        
+        NSMutableArray *unimportantGroups = [[NSMutableArray alloc] init];
+        if (important) {
+            for (TLMessageGroup *groupDesc in collapsed) {
+                TGMessageGroup *group = [[TGMessageGroup alloc] initWithMinId:groupDesc.min_id + 1 minTimestamp:1 maxId:groupDesc.max_id - 1 maxTimestamp:groupDesc.date count:groupDesc.count];
+                if (group.count != 0) {
+                    [unimportantGroups addObject:group];
+                }
+                
+                if (minParsedId == 0 || minParsedId > group.minId) {
+                    minParsedId = group.minId;
+                    minParsedDate = group.maxTimestamp;
+                }
+                
+                if (maxParsedId == 0 || maxParsedId < group.maxId) {
+                    maxParsedId = group.maxId;
+                    maxParsedDate = group.maxTimestamp;
+                }
+            }
+        }
+        
+        bool isSlice = (int32_t)parsedMessages.count >= limit;
+        if (parsedMessages.count == 0 || minParsedId <= hole.minId) {
+            isSlice = false;
+        }
+        
+        TGMessageHole *closedHole = nil;
+        if (!isSlice) {
+            closedHole = hole;
+        } else {
+            closedHole = [[TGMessageHole alloc] initWithMinId:minParsedId minTimestamp:minParsedDate maxId:hole.maxId maxTimestamp:hole.maxTimestamp];
+        }
+        
+        return [SSignal single:OGCompatHoleResult(parsedMessages ?: @[], closedHole ?: OGCompatZeroHole(), unimportantGroups ?: @[], pts)];
+    }] catch:^SSignal *(id error) {
+        return [SSignal single:OGCompatHoleResult(@[], hole ?: OGCompatZeroHole(), @[], 0)];
+    }] mapToSignal:^SSignal *(NSDictionary *next) {
+        NSArray *addedMessages = next[@"messages"];
+        
+        NSMutableArray *downloadMessages = [[NSMutableArray alloc] init];
+        
+        NSMutableDictionary *addedMessageIdToMessage = [[NSMutableDictionary alloc] init];
+        for (TGMessage *message in addedMessages) {
+            addedMessageIdToMessage[@(message.mid)] = message;
+        }
+        
+        for (TGMessage *message in addedMessages)
+        {
+            if (message.mediaAttachments.count != 0)
+            {
+                for (id attachment in message.mediaAttachments)
+                {
+                    if ([attachment isKindOfClass:[TGReplyMessageMediaAttachment class]])
+                    {
+                        TGReplyMessageMediaAttachment *replyAttachment = attachment;
+                        if (replyAttachment.replyMessage == nil && replyAttachment.replyMessageId != 0) {
+                            TGMessage *replyMessage = addedMessageIdToMessage[@(replyAttachment.replyMessageId)];
+                            if (replyMessage != nil) {
+                                replyAttachment.replyMessage = replyMessage;
+                            } else {
+                                [downloadMessages addObject:[[TGDownloadMessage alloc] initWithPeerId:peerId accessHash:accessHash messageId:replyAttachment.replyMessageId]];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (downloadMessages.count != 0) {
+            return [[TGDownloadMessagesSignal downloadMessages:downloadMessages] mapToSignal:^SSignal *(NSArray *messages) {
+                for (TGMessage *message in messages) {
+                    addedMessageIdToMessage[@(message.mid)] = message;
+                }
+                
+                for (TGMessage *message in addedMessages)
+                {
+                    if (message.mediaAttachments.count != 0)
+                    {
+                        for (id attachment in message.mediaAttachments)
+                        {
+                            if ([attachment isKindOfClass:[TGReplyMessageMediaAttachment class]])
+                            {
+                                TGReplyMessageMediaAttachment *replyAttachment = attachment;
+                                if (replyAttachment.replyMessage == nil && replyAttachment.replyMessageId != 0) {
+                                    TGMessage *replyMessage = addedMessageIdToMessage[@(replyAttachment.replyMessageId)];
+                                    if (replyMessage != nil) {
+                                        replyAttachment.replyMessage = replyMessage;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return [SSignal single:next];
+            }];
+        } else {
+            return [SSignal single:next];
+        }
+    }];
+}
+
++ (SSignal *)exportChannelInvitationLink:(int64_t)peerId accessHash:(int64_t)accessHash
+{
+    TLRPCmessages_exportChatInvite$messages_exportChatInvite *exportChatInvite = [[TLRPCmessages_exportChatInvite$messages_exportChatInvite alloc] init];
+    exportChatInvite.flags = (1 << 2);
+    exportChatInvite.peer = OGCompatChannelInputPeer(peerId, accessHash);
+    return [[[TGTelegramNetworking instance] requestSignal:exportChatInvite] mapToSignal:^SSignal *(TLExportedChatInvite *result)
+    {
+        if ([result isKindOfClass:[TLExportedChatInvite$chatInviteExported class]])
+        {
+            NSString *link = ((TLExportedChatInvite$chatInviteExported *)result).link;
+            
+            [TGDatabaseInstance() updateChannelCachedData:peerId block:^TGCachedConversationData *(TGCachedConversationData *currentData) {
+                if (currentData == nil) {
+                    currentData = [[TGCachedConversationData alloc] init];
+                }
+                return [currentData updatePrivateLink:link];
+            }];
+            
+            return [SSignal single:link];
+        }
+        else
+            return [SSignal fail:nil];
+    }];
+}
+
++ (SSignal *)_channelDifference:(int64_t)peerId accessHash:(int64_t)accessHash pts:(int32_t)pts {
+    if (OGCompatChannelIsFlaggedInvalid(peerId))
+    {
+        TGLog(@"FULL state.diff.skipInvalidPeer peer=%lld pts=%d", peerId, pts);
+        return [SSignal complete];
+    }
+    
+    int32_t limit = 100;
+    int64_t channelId = TGChannelIdFromPeerId(peerId);
+    int64_t resolvedAccessHash = OGCompatChannelAccessHash(peerId, accessHash);
+    if (channelId == 0 || resolvedAccessHash == 0)
+    {
+        TGLog(@"AUTH skip getChannelDifference peer=%lld channel=%lld accessHash=%lld pts=%d", peerId, channelId, resolvedAccessHash, pts);
+        return [SSignal complete];
+    }
+    
+    TLRPCupdates_getChannelDifference$updates_getChannelDifference *getChannelDifference = [[TLRPCupdates_getChannelDifference$updates_getChannelDifference alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = channelId;
+    inputChannel.access_hash = resolvedAccessHash;
+    TGLog(@"AUTH getChannelDifference peer=%lld apiChannel=%lld accessHash=%lld pts=%d", peerId, inputChannel.channel_id, resolvedAccessHash, pts);
+    getChannelDifference.channel = inputChannel;
+    getChannelDifference.filter = [[TLChannelMessagesFilter$channelMessagesFilterEmpty alloc] init];
+    getChannelDifference.pts = pts;
+    getChannelDifference.limit = limit;
+    
+    return [[TGTelegramNetworking instance] requestSignal:getChannelDifference];
+}
+
++ (SSignal *)deleteChannelMessages {
+    return [[TGDatabaseInstance() enqueuedDeleteChannelMessages] mapToQueue:^SSignal *(TGQueuedDeleteChannelMessages *queued) {
+        TLRPCchannels_deleteMessages$channels_deleteMessages *deleteChannelMessages = [[TLRPCchannels_deleteMessages$channels_deleteMessages alloc] init];
+        TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+        inputChannel.channel_id = TGChannelIdFromPeerId(queued.peerId);
+        inputChannel.access_hash = OGCompatChannelAccessHash(queued.peerId, queued.accessHash);
+        deleteChannelMessages.channel = inputChannel;
+        deleteChannelMessages.n_id = queued.messageIds;
+        
+        return [[[[TGTelegramNetworking instance] requestSignal:deleteChannelMessages] mapToSignal:^SSignal *(TLmessages_AffectedMessages *result) {
+            [TGDatabaseInstance() confirmChannelMessagesDeleted:queued];
+            [self updateChannelState:queued.peerId pts:result.pts ptsCount:result.pts_count];
+            return [SSignal complete];
+        }] catch:^SSignal *(__unused id error) {
+            [TGDatabaseInstance() confirmChannelMessagesDeleted:queued];
+            return [SSignal complete];
+        }];
+    }];
+}
+
++ (SSignal *)readChannelMessages {
+    return [[TGDatabaseInstance() enqueuedReadChannelMessages] mapToQueue:^SSignal *(TGQueuedReadChannelMessages *queued) {
+        bool isChannel = TGPeerIdIsChannel(queued.peerId);
+        if (queued.unread) {
+            TLRPCmessages_markDialogUnread *markDialogUnread = [[TLRPCmessages_markDialogUnread alloc] init];
+            TLInputPeer *inputPeer = [TGTelegraphInstance createInputPeerForConversation:queued.peerId accessHash:queued.accessHash];
+            if (inputPeer != nil) {
+                TLInputDialogPeer$inputDialogPeer *inputDialogPeer = [[TLInputDialogPeer$inputDialogPeer alloc] init];
+                inputDialogPeer.peer = inputPeer;
+                markDialogUnread.peer = inputDialogPeer;
+            }
+            markDialogUnread.flags = (1 << 0);
+            
+            return OGCompatConfirmedReadSignal(markDialogUnread, queued);
+        }
+        else if (isChannel) {
+            TLRPCchannels_readHistory$channels_readHistory *readChannelHistory = [[TLRPCchannels_readHistory$channels_readHistory alloc] init];
+            TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+            inputChannel.channel_id = TGChannelIdFromPeerId(queued.peerId);
+            inputChannel.access_hash = OGCompatChannelAccessHash(queued.peerId, queued.accessHash);
+            readChannelHistory.channel = inputChannel;
+            readChannelHistory.max_id = queued.maxId;
+            
+            return OGCompatConfirmedReadSignal(readChannelHistory, queued);
+        } else if (TGPeerIdIsSecretChat(queued.peerId)) {
+            NSAssert(false, @"readChannelMessages TGPeerIdIsSecretChat == true");
+            return [SSignal complete];
+        } else {
+            TLRPCmessages_readHistory$messages_readHistory *readHistory = [[TLRPCmessages_readHistory$messages_readHistory alloc] init];
+            readHistory.peer = [TGTelegraphInstance createInputPeerForConversation:queued.peerId accessHash:queued.accessHash];
+            readHistory.max_id = queued.maxId;
+            
+            return OGCompatConfirmedReadSignal(readHistory, queued);
+        }
+    }];
+}
+
++ (SSignal *)leaveChannels {
+    return [[TGDatabaseInstance() enqueuedLeaveChannels] mapToQueue:^SSignal *(TGQueuedLeaveChannel *queued) {
+        TLRPCchannels_leaveChannel$channels_leaveChannel *leaveChannel = [[TLRPCchannels_leaveChannel$channels_leaveChannel alloc] init];
+        TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+        inputChannel.channel_id = TGChannelIdFromPeerId(queued.peerId);
+        inputChannel.access_hash = OGCompatChannelAccessHash(queued.peerId, queued.accessHash);
+        leaveChannel.channel = inputChannel;
+        
+        return [[[[TGTelegramNetworking instance] requestSignal:leaveChannel] mapToSignal:^SSignal *(__unused NSNumber *result) {
+            [TGDatabaseInstance() confirmChannelLeaved:queued];
+            return [SSignal complete];
+        }] catch:^SSignal *(__unused id error) {
+            [TGDatabaseInstance() confirmChannelLeaved:queued];
+            return [SSignal complete];
+        }];
+    }];
+}
+
++ (void)updateChannelState:(int64_t)peerId pts:(int32_t)pts ptsCount:(int32_t)ptsCount {
+    [[TGDatabaseInstance() modifyChannel:peerId block:^id(int32_t currentPts) {
+        if (currentPts + ptsCount == pts) {
+            [TGDatabaseInstance() addMessagesToChannelAndDispatch:peerId messages:nil deletedMessages:nil holes:nil pts:pts skipFeedUpdate:true];
+        } else {
+            TLUpdate$updateChannelTooLong *updateChannelTooLong = [[TLUpdate$updateChannelTooLong alloc] init];
+            updateChannelTooLong.channel_id = TGChannelIdFromPeerId(peerId);
+            [TGChannelStateSignals addChannelUpdates:peerId updates:@[updateChannelTooLong]];
+        }
+        return nil;
+    }] startWithNext:nil];
+}
+
++ (SSignal *)joinTemporaryChannel:(int64_t)peerId {
+    return [[[TGDatabaseInstance() existingChannel:peerId] take:1] mapToSignal:^SSignal *(TGConversation *next) {
+        TLRPCchannels_joinChannel$channels_joinChannel *joinChannel = [[TLRPCchannels_joinChannel$channels_joinChannel alloc] init];
+        TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+        inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+        inputChannel.access_hash = next.accessHash;
+        joinChannel.channel = inputChannel;
+
+        return [[[TGTelegramNetworking instance] requestSignal:joinChannel] mapToSignal:^SSignal *(TLUpdates *updates) {
+            if (updates.chats.count != 0) {
+                TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:updates.chats[0]];
+                if (conversation.conversationId == peerId) {
+                    return [[TGDatabaseInstance() modifyChannel:peerId block:^id(__unused int32_t pts) {
+                        [TGDatabaseInstance() updateChannels:@[conversation]];
+                        return [SSignal complete];
+                    }] switchToLatest];
+                } else {
+                    return [SSignal fail:nil];
+                }
+            } else {
+                return [SSignal fail:nil];
+            }
+        }];
+    }];
+}
+
++ (SSignal *)inviteUsers:(int64_t)peerId accessHash:(int64_t)accessHash users:(NSArray *)users {
+    TLRPCchannels_inviteToChannel$channels_inviteToChannel *inviteToChannel = [[TLRPCchannels_inviteToChannel$channels_inviteToChannel alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    inviteToChannel.channel = inputChannel;
+    
+    NSMutableArray *inputUsers = [[NSMutableArray alloc] init];
+    for (TGUser *user in users) {
+        TLInputUser$inputUser *inputUser = [[TLInputUser$inputUser alloc] init];
+        inputUser.user_id = user.uid;
+        inputUser.access_hash = user.phoneNumberHash;
+        [inputUsers addObject:inputUser];
+    }
+    inviteToChannel.users = inputUsers;
+    
+    return [[[TGTelegramNetworking instance] requestSignal:inviteToChannel] mapToSignal:^SSignal *(TLUpdates *updates) {
+        id chat = updates.chats.firstObject;
+        TGConversation *conversation = nil;
+        if (chat != nil) {
+            conversation = [[TGConversation alloc] initWithTelegraphChatDesc:chat];
+            if (conversation.conversationId == peerId) {
+                [TGDatabaseInstance() updateChannels:@[conversation]];
+            }
+        }
+        [[TGTelegramNetworking instance] addUpdates:updates];
+        
+        return [SSignal complete];
+    }];
+}
+
++ (SSignal *)checkChannelUsername:(int64_t)peerId accessHash:(int64_t)accessHash username:(NSString *)username {
+    TLRPCchannels_checkUsername$channels_checkUsername *checkChannelUsername = [[TLRPCchannels_checkUsername$channels_checkUsername alloc] init];
+    if (peerId != 0) {
+        TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+        inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+        inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+        checkChannelUsername.channel = inputChannel;
+    } else {
+        checkChannelUsername.channel = [[TLInputChannel$inputChannelEmpty alloc] init];
+    }
+    checkChannelUsername.username = username;
+    return [[[TGTelegramNetworking instance] requestSignal:checkChannelUsername] mapToSignal:^SSignal *(NSNumber *result) {
+        if ([result boolValue]) {
+            return [SSignal complete];
+        } else {
+            return [SSignal fail:nil];
+        }
+    }];
+}
+
++ (SSignal *)updateChannelUsername:(int64_t)peerId accessHash:(int64_t)accessHash username:(NSString *)username {
+    TLRPCchannels_updateUsername$channels_updateUsername *updateChannelUsername = [[TLRPCchannels_updateUsername$channels_updateUsername alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    updateChannelUsername.channel = inputChannel;
+    updateChannelUsername.username = username;
+    return [[[TGTelegramNetworking instance] requestSignal:updateChannelUsername] mapToSignal:^SSignal *(NSNumber *result) {
+        if ([result boolValue]) {
+            return [[TGDatabaseInstance() modifyChannel:peerId block:^id(__unused int32_t pts) {
+                [TGDatabaseInstance() updateChannelUsername:peerId username:username];
+                return [SSignal complete];
+            }] switchToLatest];
+        } else {
+            return [SSignal fail:nil];
+        }
+    }];
+}
+
++ (SSignal *)updateChannelAbout:(int64_t)peerId accessHash:(int64_t)accessHash about:(NSString *)about {
+    TLRPCmessages_editChatAbout$messages_editChatAbout *editChatAbout = [[TLRPCmessages_editChatAbout$messages_editChatAbout alloc] init];
+    editChatAbout.peer = OGCompatChannelInputPeer(peerId, accessHash);
+    editChatAbout.about = about;
+    return [[[TGTelegramNetworking instance] requestSignal:editChatAbout] mapToSignal:^SSignal *(NSNumber *result) {
+        if ([result boolValue]) {
+            return [[TGDatabaseInstance() modifyChannel:peerId block:^id(__unused int32_t pts) {
+                [TGDatabaseInstance() updateChannelAbout:peerId about:about];
+                return [SSignal complete];
+            }] switchToLatest];
+        } else {
+            return [SSignal fail:nil];
+        }
+    }];
+}
+
++ (SSignal *)updateChannelPhoto:(int64_t)peerId accessHash:(int64_t)accessHash uploadedFile:(SSignal *)uploadedFile {
+    return [uploadedFile mapToSignal:^SSignal *(TLInputFile *inputFile) {
+        TLRPCchannels_editPhoto$channels_editPhoto *editPhoto = [[TLRPCchannels_editPhoto$channels_editPhoto alloc] init];
+        TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+        inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+        inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+        editPhoto.channel = inputChannel;
+        TLInputChatPhoto$inputChatUploadedPhoto *uploadedPhoto = [[TLInputChatPhoto$inputChatUploadedPhoto alloc] init];
+        uploadedPhoto.flags = (1 << 0);
+        uploadedPhoto.file = inputFile;
+        editPhoto.photo = uploadedPhoto;
+        
+        return [[[TGTelegramNetworking instance] requestSignal:editPhoto] mapToSignal:^SSignal *(TLUpdates *updates) {
+            if (updates.chats.count != 0) {
+                TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:updates.chats[0]];
+                if (conversation.conversationId == peerId) {
+                    [TGDatabaseInstance() updateChannels:@[conversation]];
+                }
+            }
+            [[TGTelegramNetworking instance] addUpdates:updates];
+            
+            return [SSignal complete];
+        }];
+    }];
+}
+
++ (SSignal *)updateChannelStickerPack:(int64_t)peerId accessHash:(int64_t)accessHash stickerPack:(TGStickerPack *)stickerPack {
+    TLRPCchannels_setStickers$channels_setStickers *setStickers = [[TLRPCchannels_setStickers$channels_setStickers alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    setStickers.channel = inputChannel;
+    
+    TLInputStickerSet *stickerSet = [[TLInputStickerSet$inputStickerSetEmpty alloc] init];
+    if (stickerPack != nil)
+        stickerSet = [TGStickersSignals _inputStickerSetFromPackReference:stickerPack.packReference];
+    setStickers.stickerset = stickerSet;
+    
+    return [[[TGTelegramNetworking instance] requestSignal:setStickers] mapToSignal:^SSignal *(NSNumber *result) {
+        if ([result boolValue]) {
+            [TGDatabaseInstance() updateChannelCachedData:peerId block:^TGCachedConversationData *(TGCachedConversationData *currentData) {
+                if (currentData == nil) {
+                    currentData = [[TGCachedConversationData alloc] init];
+                }
+                return [currentData updateStickerPack:stickerPack.packReference canSetStickerPack:currentData.canSetStickerPack];
+            }];
+            
+            return [SSignal complete];
+        } else {
+            return [SSignal fail:nil];
+        }
+    }];
+
+}
+
++ (SSignal *)updateChannelExtendedInfo:(int64_t)peerId accessHash:(int64_t)accessHash updateUnread:(bool)updateUnread {
+    if (OGCompatChannelIsFlaggedInvalid(peerId))
+    {
+        TGConversation *conversation = [TGDatabaseInstance() loadConversationWithId:peerId];
+        if (conversation != nil && conversation.kickedFromChat)
+        {
+            TGLog(@"FULL channelExtendedInfo.skipInvalidPeer peer=%lld hash=%lld updateUnread=%d", peerId, accessHash, updateUnread ? 1 : 0);
+            return [SSignal complete];
+        }
+        OGCompatClearInvalidChannelFlag(peerId);
+    }
+    
+    TLRPCchannels_getFullChannel$channels_getFullChannel *getFullChat = [[TLRPCchannels_getFullChannel$channels_getFullChannel alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    getFullChat.channel = inputChannel;
+    SSignal *signal = [[[[TGTelegramNetworking instance] requestSignal:getFullChat] mapToSignal:^SSignal *(TLmessages_ChatFull *result) {
+        if ([result.full_chat isKindOfClass:[TLChatFull$channelFull class]]) {
+            TLChatFull$channelFull *channelFull = (TLChatFull$channelFull *)result.full_chat;
+            
+            TGConversation *conversation = nil;
+            for (TLChat *chat in result.chats) {
+                if ([chat isKindOfClass:[TLChat$channel class]]) {
+                    if (((TLChat$channel *)chat).n_id == TGChannelIdFromPeerId(peerId)) {
+                        conversation = [[TGConversation alloc] initWithTelegraphChatDesc:chat];
+                        break;
+                    }
+                }
+            }
+            
+            NSString *privateLink = @"";
+            if ([channelFull.exported_invite isKindOfClass:[TLExportedChatInvite$chatInviteExported class]]) {
+                privateLink = ((TLExportedChatInvite$chatInviteExported *)channelFull.exported_invite).link;
+            }
+            
+            TGConversationMigrationData *migrationData = nil;
+            if (channelFull.migrated_from_chat_id != 0) {
+                migrationData = [[TGConversationMigrationData alloc] initWithPeerId:TGPeerIdFromGroupId(channelFull.migrated_from_chat_id) maxMessageId:channelFull.migrated_from_max_id];
+            }
+            
+            NSMutableDictionary *botInfos = nil;
+            if (channelFull.bot_info != nil) {
+                botInfos = [[NSMutableDictionary alloc] init];
+                
+                for (TLBotInfo *botInfo in channelFull.bot_info) {
+                    if ([botInfo isKindOfClass:[TLBotInfo$botInfo class]]) {
+                        TGBotInfo *parsedBotInfo = [TGBotSignals botInfoForInfo:botInfo];
+                        if (parsedBotInfo != nil) {
+                            botInfos[@(((TLBotInfo$botInfo *)botInfo).user_id)] = parsedBotInfo;
+                        }
+                    }
+                }
+            }
+            
+            TGStickerPackIdReference *stickerPack = nil;
+            if (channelFull.stickerset != nil) {
+                stickerPack = [[TGStickerPackIdReference alloc] initWithPackId:channelFull.stickerset.n_id packAccessHash:channelFull.stickerset.access_hash shortName:channelFull.stickerset.short_name];
+            }
+            
+            return [[TGDatabaseInstance() modifyChannel:peerId block:^id(__unused int32_t pts) {
+                if (conversation != nil) {
+                    [TGDatabaseInstance() updateChannels:@[conversation]];
+                }
+                [TGDatabaseInstance() updateChannelAbout:peerId about:channelFull.about];
+                if (channelFull.pinned_msg_id >= channelFull.available_min_id) {
+                    [TGDatabaseInstance() updateChannelPinnedMessageId:peerId pinnedMessageId:channelFull.pinned_msg_id hidden:nil];
+                } else {
+                    [TGDatabaseInstance() updateChannelPinnedMessageId:peerId pinnedMessageId:0 hidden:nil];
+                }
+                
+                if (updateUnread) {
+                    [TGDatabaseInstance() updateChannelReadState:peerId maxReadId:channelFull.read_inbox_max_id unreadImportantCount:channelFull.unread_count unreadUnimportantCount:0 unreadMentionsCount:-1 topMessageId:-1];
+                }
+                
+                __block int32_t clearMessagesMessageId = 0;
+                __block int64_t clearMessagesAssociatedPeerId = 0;
+                [TGDatabaseInstance() updateChannelCachedData:peerId block:^TGCachedConversationData *(TGCachedConversationData *currentData) {
+                    if (currentData == nil) {
+                        currentData = [[TGCachedConversationData alloc] init];
+                    }
+                    
+                    currentData = [currentData updatePrivateLink:privateLink];
+                    currentData = [currentData updateMigrationData:migrationData];
+                    currentData = [currentData updateBotInfos:botInfos];
+                    currentData = [currentData updateStickerPack:stickerPack canSetStickerPack:channelFull.can_set_stickers];
+                    if (currentData.minAvailableMessageId < channelFull.available_min_id) {
+                        clearMessagesMessageId = channelFull.available_min_id;
+                        clearMessagesAssociatedPeerId = migrationData.peerId;
+                    }
+                    currentData = [currentData updateMinAvailableMessageId:channelFull.available_min_id];
+                    currentData = [currentData updatePreHistory:channelFull.flags & (1 << 10)];
+                    currentData = [currentData updatePaidMessagesAvailable:(channelFull.flags2 & (1 << 20)) != 0];
+                    
+                    return [currentData updateManagementCount:channelFull.admins_count blacklistCount:channelFull.kicked_count bannedCount:channelFull.banned_count memberCount:channelFull.participants_count];
+                }];
+                
+                if (clearMessagesMessageId != 0) {
+                    NSArray *clearAssociatedPeerIds = nil;
+                    if (clearMessagesAssociatedPeerId != 0) {
+                        clearAssociatedPeerIds = @[@(clearMessagesAssociatedPeerId)];
+                    }
+                    [TGDatabaseInstance() transactionAddMessages:nil notifyAddedMessages:false removeMessages:nil updateMessages:nil updatePeerDrafts:nil removeMessagesInteractive:nil keepDates:false removeMessagesInteractiveForEveryone:false updateConversationDatas:nil applyMaxIncomingReadIds:nil applyMaxOutgoingReadIds:nil applyMaxOutgoingReadDates:nil applyUnreadMarks:nil readHistoryForPeerIds:nil resetPeerReadStates:nil resetPeerUnseenMentionsStates:nil clearConversationsWithPeerIds:nil clearConversationsInteractive:false removeConversationsWithPeerIds:nil updatePinnedConversations:nil synchronizePinnedConversations:false forceReplacePinnedConversations:false readMessageContentsInteractive:nil deleteEarlierHistory:@{@(peerId): @(clearMessagesMessageId - 1)} updateFeededChannels:nil newlyJoinedFeedId:nil synchronizeFeededChannels:false calculateUnreadChats:false];
+                }
+                
+                TLPeerNotifySettings *settings = channelFull.notify_settings;
+                
+                NSNumber *peerSoundId = nil;
+                NSNumber *peerMuteUntil = nil;
+                NSNumber *peerPreviewText = nil;
+                NSNumber *messagesMuted = nil;
+                
+                if ([settings isKindOfClass:[TLPeerNotifySettings$peerNotifySettings class]])
+                {
+                    TLPeerNotifySettings$peerNotifySettings *concreteSettings = (TLPeerNotifySettings$peerNotifySettings *)settings;
+                    if (concreteSettings.flags & (1 << 0)) {
+                        peerPreviewText = @(concreteSettings.showPreviews);
+                    }
+                    if (concreteSettings.flags & (1 << 1)) {
+                        messagesMuted = @(concreteSettings.silent);
+                    }
+                    if (concreteSettings.flags & (1 << 2)) {
+                        if (concreteSettings.mute_until > LGRemoteClockTime())
+                            peerMuteUntil = @(concreteSettings.mute_until);
+                        else
+                            peerMuteUntil = @0;
+                    }
+                    if (concreteSettings.flags & (1 << 3))
+                    {
+                        if (concreteSettings.sound.length == 0)
+                            peerSoundId = @(0);
+                        else if ([concreteSettings.sound isEqualToString:@"default"])
+                            peerSoundId = @(1);
+                        else
+                            peerSoundId = @([concreteSettings.sound intValue]);
+                    }
+                }
+                
+                [TGDatabaseInstance() storePeerNotificationSettings:peerId soundId:peerSoundId muteUntil:peerMuteUntil previewText:peerPreviewText messagesMuted:messagesMuted writeToActionQueue:false completion:^(bool changed)
+                {
+                    if (changed)
+                    {
+                        [ActionStageInstance() dispatchOnStageQueue:^
+                        {
+                            NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
+                            if (peerSoundId != nil)
+                                dict[@"soundId"] = peerSoundId;
+                            if (peerMuteUntil != nil)
+                                dict[@"muteUntil"] = peerMuteUntil;
+                            if (peerPreviewText != nil)
+                                dict[@"previewText"] = peerPreviewText;
+                            if (messagesMuted != nil)
+                                dict[@"messagesMuted"] = messagesMuted;
+                            
+                            [ActionStageInstance() dispatchResource:[NSString stringWithFormat:@"/tg/peerSettings/(%lld)", peerId] resource:[[SGraphObjectNode alloc] initWithObject:dict]];
+                        }];
+                    }
+                }];
+                
+                return [SSignal complete];
+            }] switchToLatest];
+        }
+        
+        return [SSignal complete];
+    }] catch:^SSignal *(id error) {
+        NSString *errorType = [[TGTelegramNetworking instance] extractNetworkErrorType:error];
+        if (OGCompatChannelGoneError(errorType)) {
+            return [SSignal complete];
+        }
+        if ([errorType isEqual:@"CHANNEL_PRIVATE"]) {
+            OGCompatMarkChannelInvalidPeer(peerId, errorType);
+            return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+                TGConversation *conversation = [[TGDatabaseInstance() loadChannels:@[@(peerId)]][@(peerId)] copy];
+                if (conversation != nil && !conversation.kickedFromChat) {
+                    conversation.kickedFromChat = true;
+                    [TGDatabaseInstance() updateChannels:@[conversation]];
+                }
+                
+                return [SSignal complete];
+            }] switchToLatest];
+        }
+        return [SSignal complete];
+    }];
+
+    NSString *requestKey = [NSString stringWithFormat:@"%lld:%lld:%d", inputChannel.channel_id, inputChannel.access_hash, updateUnread ? 1 : 0];
+    return [OGCompatExtendedInfoManagerAccessor() multicastedSignalForKey:requestKey producer:^SSignal *
+    {
+        return signal;
+    }];
+}
+
++ (SSignal *)updatedPeerMessageViews:(int64_t)peerId accessHash:(int64_t)accessHash messageIds:(NSArray *)messageIds {
+    return [self _og_compat_messageViews:peerId accessHash:accessHash messageIds:messageIds increment:false];
+}
+
++ (SSignal *)consumeMessages:(int64_t)peerId accessHash:(int64_t)accessHash messageIds:(NSArray *)messageIds {
+    return [self _og_compat_messageViews:peerId accessHash:accessHash messageIds:messageIds increment:true];
+}
+
++ (SSignal *)_og_compat_messageViews:(int64_t)peerId accessHash:(int64_t)accessHash messageIds:(NSArray *)messageIds increment:(bool)increment {
+    TGIOS6MessageViewsRpc *getMessageViews = [[TGIOS6MessageViewsRpc alloc] init];
+    if (TGPeerIdIsChannel(peerId)) {
+        TLInputPeer$inputPeerChannel *inputChannel = OGCompatChannelInputPeer(peerId, accessHash);
+        getMessageViews.peer = inputChannel;
+    } else {
+        getMessageViews.peer = [[TLInputPeer$inputPeerEmpty alloc] init];
+    }
+    getMessageViews.messageIds = messageIds;
+    getMessageViews.increment = increment;
+    
+    return [[[TGTelegramNetworking instance] requestSignal:getMessageViews] mapToSignal:^SSignal *(NSDictionary *response) {
+        NSArray *views = [response isKindOfClass:[NSDictionary class]] ? response[@"views"] : nil;
+        if (![views isKindOfClass:[NSArray class]])
+            return [SSignal single:@{}];
+        
+        [TGUserDataRequestBuilder executeUserDataUpdate:response[@"users"]];
+        OGCompatStoreHistoryChannels(response[@"chats"]);
+        
+        return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+            NSUInteger count = MIN(messageIds.count, views.count);
+            NSMutableDictionary *messageIdToViewCount = [[NSMutableDictionary alloc] init];
+            for (NSUInteger i = 0; i < count; i++) {
+                NSNumber *viewCount = views[i][@"views"];
+                if (viewCount != nil)
+                    messageIdToViewCount[messageIds[i]] = viewCount;
+            }
+            [TGDatabaseInstance() updateMessageViews:peerId messageIdToViews:messageIdToViewCount];
+            
+            NSMutableArray *messageUpdates = [[NSMutableArray alloc] init];
+            for (NSUInteger i = 0; i < count; i++) {
+                NSDictionary *replies = views[i][@"replies"];
+                if (![replies[@"comments"] boolValue])
+                    continue;
+                
+                int32_t messageId = [messageIds[i] intValue];
+                TGMessage *message = [TGDatabaseInstance() loadMessageWithMid:messageId peerId:peerId];
+                if (message == nil)
+                    continue;
+                
+                TGMessageDiscussionContentProperty *discussion = [[TGMessageDiscussionContentProperty alloc] initWithComments:true replies:[replies[@"replies"] intValue] channelId:[replies[@"channelId"] longLongValue] maxId:[replies[@"maxId"] intValue] readMaxId:[replies[@"readMaxId"] intValue] recentRepliers:replies[@"recentRepliers"]];
+                TGMessageDiscussionContentProperty *currentDiscussion = message.contentProperties[@"ios6Discussion"];
+                if ([currentDiscussion isKindOfClass:[TGMessageDiscussionContentProperty class]] && currentDiscussion.comments == discussion.comments && currentDiscussion.replies == discussion.replies && currentDiscussion.channelId == discussion.channelId && currentDiscussion.maxId == discussion.maxId && currentDiscussion.readMaxId == discussion.readMaxId && TGObjectCompare(currentDiscussion.recentRepliers, discussion.recentRepliers))
+                    continue;
+                
+                NSMutableDictionary *properties = [[NSMutableDictionary alloc] initWithDictionary:message.contentProperties ?: @{}];
+                properties[@"ios6Discussion"] = discussion;
+                message.contentProperties = properties;
+                [messageUpdates addObject:[[TGDatabaseUpdateMessageWithMessage alloc] initWithPeerId:peerId messageId:messageId message:message dispatchEdited:true]];
+            }
+            if (messageUpdates.count != 0)
+                [TGDatabaseInstance() transactionUpdateMessages:messageUpdates updateConversationDatas:nil];
+            
+            return [SSignal single:messageIdToViewCount];
+        }] switchToLatest];
+    }];
+}
+
++ (SSignal *)toggleChannelEverybodyCanInviteMembers:(int64_t)peerId accessHash:(int64_t)accessHash enabled:(bool)enabled {
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    TLRPCchannels_getChannels$channels_getChannels *getChannels = [[TLRPCchannels_getChannels$channels_getChannels alloc] init];
+    getChannels.n_id = @[inputChannel];
+    return [[[TGTelegramNetworking instance] requestSignal:getChannels] mapToSignal:^SSignal *(TLmessages_Chats *chats) {
+        TLChat$channel *channel = nil;
+        for (TLChat *chat in chats.chats) {
+            if ([chat isKindOfClass:[TLChat$channel class]]) {
+                channel = (TLChat$channel *)chat;
+                break;
+            }
+        }
+        if (channel == nil) {
+            return [SSignal fail:nil];
+        }
+        
+        int32_t currentFlags = channel.default_banned_rights.flags;
+        int32_t updatedFlags = enabled ? (currentFlags & ~TGChatBannedRightsInviteUsersFlag) : (currentFlags | TGChatBannedRightsInviteUsersFlag);
+        if (updatedFlags == currentFlags) {
+            TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:channel];
+            if (conversation.conversationId == peerId) {
+                [TGDatabaseInstance() updateChannels:@[conversation]];
+            }
+            return [SSignal complete];
+        }
+        
+        TLChatBannedRights$chatBannedRights *defaultBannedRights = [[TLChatBannedRights$chatBannedRights alloc] init];
+        defaultBannedRights.flags = updatedFlags;
+        defaultBannedRights.until_date = channel.default_banned_rights.until_date;
+        TLRPCmessages_editChatDefaultBannedRights$messages_editChatDefaultBannedRights *editDefaultBannedRights = [[TLRPCmessages_editChatDefaultBannedRights$messages_editChatDefaultBannedRights alloc] init];
+        editDefaultBannedRights.peer = OGCompatChannelInputPeer(peerId, accessHash);
+        editDefaultBannedRights.banned_rights = defaultBannedRights;
+        return [[[TGTelegramNetworking instance] requestSignal:editDefaultBannedRights] mapToSignal:^SSignal *(TLUpdates *updates) {
+            if (updates.chats.count != 0) {
+                TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:updates.chats[0]];
+                if (conversation.conversationId == peerId) {
+                    [TGDatabaseInstance() updateChannels:@[conversation]];
+                }
+            }
+            
+            [[TGTelegramNetworking instance] addUpdates:updates];
+            return [SSignal complete];
+        }];
+    }];
+}
+
++ (SSignal *)updateChannelAdminRights:(int64_t)peerId accessHash:(int64_t)accessHash user:(TGUser *)user rights:(TGChannelAdminRights *)rights {
+    TLRPCchannels_editAdmin$channels_editAdmin *editAdmin = [[TLRPCchannels_editAdmin$channels_editAdmin alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    editAdmin.channel = inputChannel;
+    editAdmin.user_id = [TGTelegraphInstance createInputUserForUid:user.uid];
+    editAdmin.admin_rights = [rights tlRights];
+    
+    return [[[TGTelegramNetworking instance] requestSignal:editAdmin] mapToSignal:^SSignal *(TLUpdates *updates) {
+        [[TGTelegramNetworking instance] addUpdates:updates];
+        [self channelAdminRightsUpdatedPipe].sink(@(peerId));
+        return [SSignal complete];
+    }];
+}
+
++ (SSignal *)updateChannelBannedRightsAndGetMembership:(int64_t)peerId accessHash:(int64_t)accessHash user:(TGUser *)user rights:(TGChannelBannedRights *)rights {
+    TLRPCchannels_editBanned$channels_editBanned *editBanned = [[TLRPCchannels_editBanned$channels_editBanned alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    editBanned.channel = inputChannel;
+    editBanned.participant = [TGTelegraphInstance createInputPeerForConversation:user.uid accessHash:user.phoneNumberHash];
+    editBanned.banned_rights = [rights tlRights];
+    
+    SSignal *update = [[[[TGTelegramNetworking instance] requestSignal:editBanned] mapToSignal:^SSignal *(TLUpdates *updates) {
+        [[TGTelegramNetworking instance] addUpdates:updates];
+        
+        return [SSignal complete];
+    }] then:[self channelRole:peerId accessHash:accessHash user:user]];
+    
+    return update;
+}
+
++ (SSignal *)channelRole:(int64_t)peerId accessHash:(int64_t)accessHash user:(TGUser *)user {
+    TLRPCchannels_getParticipant$channels_getParticipant *getParticipant = [[TLRPCchannels_getParticipant$channels_getParticipant alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    getParticipant.channel = inputChannel;
+    getParticipant.participant = [TGTelegraphInstance createInputPeerForConversation:user.uid accessHash:user.phoneNumberHash];
+    
+    return [[[[TGTelegramNetworking instance] requestSignal:getParticipant] map:^id(TLchannels_ChannelParticipant *result) {
+        TLChannelParticipant *participant = result.participant;
+        int32_t timestamp = 0;
+        bool isCreator = false;
+        TGChannelAdminRights *adminRights = nil;
+        TGChannelBannedRights *bannedRights = nil;
+        int64_t inviterId = 0;
+        int64_t adminInviterId = 0;
+        int64_t kickedById = 0;
+        bool adminCanManage = false;
+        
+        if ([participant isKindOfClass:[TLChannelParticipant$channelParticipant class]]) {
+            timestamp = ((TLChannelParticipant$channelParticipant *)participant).date;
+        } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantCreator class]]) {
+            isCreator = true;
+            timestamp = 0;
+        } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantAdmin class]]) {
+            adminRights = [[TGChannelAdminRights alloc] initWithTL:((TLChannelParticipant$channelParticipantAdmin *)participant).admin_rights];
+            inviterId = ((TLChannelParticipant$channelParticipantAdmin *)participant).inviter_id;
+            timestamp = ((TLChannelParticipant$channelParticipantAdmin *)participant).date;
+            adminInviterId = ((TLChannelParticipant$channelParticipantAdmin *)participant).promoted_by;
+            adminCanManage = ((TLChannelParticipant$channelParticipantAdmin *)participant).flags & (1 << 0);
+        } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantBanned class]]) {
+            bannedRights = [[TGChannelBannedRights alloc] initWithTL:((TLChannelParticipant$channelParticipantBanned *)participant).banned_rights];
+            kickedById = ((TLChannelParticipant$channelParticipantBanned *)participant).kicked_by;
+            timestamp = ((TLChannelParticipant$channelParticipantBanned *)participant).date;
+        }
+        
+        return [[TGCachedConversationMember alloc] initWithUid:user.uid isCreator:isCreator adminRights:adminRights bannedRights:bannedRights timestamp:timestamp inviterId:inviterId adminInviterId:adminInviterId kickedById:kickedById adminCanManage:adminCanManage];
+    }] catch:^SSignal *(__unused id error) {
+        return [SSignal single:nil];
+    }];
+}
+
++ (SSignal *)channelMembers:(int64_t)peerId accessHash:(int64_t)accessHash filter:(TLChannelParticipantsFilter *)filter offset:(NSUInteger)offset count:(NSUInteger)count {
+    return [self channelMembers:peerId accessHash:accessHash filter:filter offset:offset count:count hash:0];
+}
+    
++ (SSignal *)channelMembers:(int64_t)peerId accessHash:(int64_t)accessHash filter:(TLChannelParticipantsFilter *)filter offset:(NSUInteger)offset count:(NSUInteger)count hash:(int64_t)hash {
+    TLRPCchannels_getParticipants$channels_getParticipants *getParticipants = [[TLRPCchannels_getParticipants$channels_getParticipants alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    getParticipants.channel = inputChannel;
+    getParticipants.filter = filter;
+    getParticipants.offset = (int32_t)offset;
+    getParticipants.limit = (int32_t)count;
+    getParticipants.n_hash = hash;
+    return [[[TGTelegramNetworking instance] requestSignal:getParticipants] mapToSignal:^SSignal *(TLchannels_ChannelParticipants *intermediateResult) {
+        if ([intermediateResult isKindOfClass:[TLchannels_ChannelParticipants$channels_channelParticipants class]]) {
+            TLchannels_ChannelParticipants$channels_channelParticipants *result = (TLchannels_ChannelParticipants$channels_channelParticipants *)intermediateResult;
+            [TGUserDataRequestBuilder executeUserDataUpdate:result.users];
+            
+            NSMutableArray *users = [[NSMutableArray alloc] init];
+            NSMutableDictionary *memberDatas = [[NSMutableDictionary alloc] init];
+            
+            for (TLChannelParticipant *participant in result.participants) {
+                TGUser *user = [TGDatabaseInstance() loadUser:participant.user_id];
+                if (user != nil) {
+                    int32_t timestamp = 0;
+                    bool isCreator = false;
+                    TGChannelAdminRights *adminRights = nil;
+                    TGChannelBannedRights *bannedRights = nil;
+                    int64_t inviterId = 0;
+                    int64_t adminInviterId = 0;
+                    int64_t kickedById = 0;
+                    bool adminCanManage = false;
+                    
+                    if ([participant isKindOfClass:[TLChannelParticipant$channelParticipant class]]) {
+                        timestamp = ((TLChannelParticipant$channelParticipant *)participant).date;
+                    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantCreator class]]) {
+                        isCreator = true;
+                        timestamp = 0;
+                    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantAdmin class]]) {
+                        adminRights = [[TGChannelAdminRights alloc] initWithTL:((TLChannelParticipant$channelParticipantAdmin *)participant).admin_rights];
+                        inviterId = ((TLChannelParticipant$channelParticipantAdmin *)participant).inviter_id;
+                        timestamp = ((TLChannelParticipant$channelParticipantAdmin *)participant).date;
+                        adminInviterId = ((TLChannelParticipant$channelParticipantAdmin *)participant).promoted_by;
+                        adminCanManage = ((TLChannelParticipant$channelParticipantAdmin *)participant).flags & (1 << 0);
+                    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantBanned class]]) {
+                        bannedRights = [[TGChannelBannedRights alloc] initWithTL:((TLChannelParticipant$channelParticipantBanned *)participant).banned_rights];
+                        timestamp = ((TLChannelParticipant$channelParticipantBanned *)participant).date;
+                        kickedById = ((TLChannelParticipant$channelParticipantBanned *)participant).kicked_by;
+                    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantSelf class]]) {
+                        timestamp = ((TLChannelParticipant$channelParticipantSelf *)participant).date;
+                        inviterId = ((TLChannelParticipant$channelParticipantSelf *)participant).inviter_id;
+                    }
+                    
+                    memberDatas[@(user.uid)] = [[TGCachedConversationMember alloc] initWithUid:user.uid isCreator:isCreator adminRights:adminRights bannedRights:bannedRights timestamp:timestamp inviterId:inviterId adminInviterId:adminInviterId kickedById:kickedById adminCanManage:adminCanManage];
+                    [users addObject:user];
+                }
+            }
+            
+            return [SSignal single:@{@"memberDatas": memberDatas, @"users": users, @"count": @(result.count)}];
+        } else {
+            return [SSignal single:@{@"notModified": @true}];
+        }
+    }];
+}
+
++ (SSignal *)channelBlacklistMembers:(int64_t)peerId accessHash:(int64_t)accessHash offset:(NSUInteger)offset count:(NSUInteger)count {
+    return [self channelMembers:peerId accessHash:accessHash filter:[[TLChannelParticipantsFilter$channelParticipantsKicked alloc] init] offset:offset count:count];
+}
+
++ (SSignal *)channelBannedMembers:(int64_t)peerId accessHash:(int64_t)accessHash offset:(NSUInteger)offset count:(NSUInteger)count {
+    return [self channelMembers:peerId accessHash:accessHash filter:[[TLChannelParticipantsFilter$channelParticipantsBanned alloc] init] offset:offset count:count];
+}
+
++ (SSignal *)channelMembers:(int64_t)peerId accessHash:(int64_t)accessHash offset:(NSUInteger)offset count:(NSUInteger)count {
+    return [self channelMembers:peerId accessHash:accessHash filter:[[TLChannelParticipantsFilter$channelParticipantsRecent alloc] init] offset:offset count:count];
+}
+
++ (SSignal *)channelAdmins:(int64_t)peerId accessHash:(int64_t)accessHash offset:(NSUInteger)offset count:(NSUInteger)count {
+    return [self channelAdmins:peerId accessHash:accessHash offset:offset count:count hash:0];
+}
+
++ (SSignal *)channelAdmins:(int64_t)peerId accessHash:(int64_t)accessHash offset:(NSUInteger)offset count:(NSUInteger)count hash:(int64_t)hash {
+    return [self channelMembers:peerId accessHash:accessHash filter:[[TLChannelParticipantsFilter$channelParticipantsAdmins alloc] init] offset:offset count:count hash:hash];
+}
+
++ (SSignal *)channelInviterUser:(int64_t)peerId accessHash:(int64_t)accessHash {
+    TLRPCchannels_getParticipant$channels_getParticipant *getParticipant = [[TLRPCchannels_getParticipant$channels_getParticipant alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    getParticipant.channel = inputChannel;
+    getParticipant.participant = [[TLInputPeer$inputPeerSelf alloc] init];
+    
+    SSignal *cachedDataSignal = [[[TGDatabaseInstance() channelCachedData:peerId] take:1] mapToSignal:^SSignal *(TGCachedConversationData *cachedData) {
+        if (cachedData == nil) {
+            SSignal *refreshed = [TGChannelManagementSignals updateChannelExtendedInfo:peerId accessHash:accessHash updateUnread:false];
+            SSignal *reloaded = [refreshed then:[[TGDatabaseInstance() channelCachedData:peerId] take:1]];
+            return [reloaded map:^id(TGCachedConversationData *nextCachedData) {
+                return nextCachedData ?: [[TGCachedConversationData alloc] init];
+            }];
+        } else {
+            return [SSignal single:cachedData];
+        }
+    }];
+    
+    SSignal *participantSignal = [[TGTelegramNetworking instance] requestSignal:getParticipant];
+    
+    return [[[SSignal combineSignals:@[participantSignal, cachedDataSignal]] map:^id(NSArray *combinedData) {
+        TLchannels_ChannelParticipant *result = combinedData[0];
+        TGCachedConversationData *cachedData = combinedData[1];
+        
+        [TGUserDataRequestBuilder executeUserDataUpdate:result.users];
+        
+        TLChannelParticipant *participant = result.participant;
+        int64_t inviterUid = 0;
+        int32_t timestamp = 0;
+        
+        if (cachedData.migrationData == nil && [participant isKindOfClass:[TLChannelParticipant$channelParticipantSelf class]]) {
+            inviterUid = ((TLChannelParticipant$channelParticipantSelf *)participant).inviter_id;
+            timestamp = ((TLChannelParticipant$channelParticipantSelf *)participant).date;
+        }
+        
+        return @{@"userId": @(inviterUid), @"timestamp": @(timestamp)};
+    }] catch:^SSignal *(__unused id error) {
+        return [SSignal single:nil];
+    }];
+}
+
++ (SSignal *)deleteChannel:(int64_t)peerId accessHash:(int64_t)accessHash {
+    TLRPCchannels_deleteChannel$channels_deleteChannel *deleteChannel = [[TLRPCchannels_deleteChannel$channels_deleteChannel alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    deleteChannel.channel = inputChannel;
+    
+    return [[TGTelegramNetworking instance] requestSignal:deleteChannel];
+}
+
++ (SSignal *)canMakePublicChannels {
+    return [[[self checkChannelUsername:0 accessHash:0 username:@""] catch:^SSignal *(__unused id error) {
+        return [SSignal single:@false];
+    }] then:[SSignal single:@true]];
+}
+
++ (SSignal *)updateChannelSignaturesEnabled:(int64_t)peerId accessHash:(int64_t)accessHash enabled:(bool)enabled {
+    TLRPCchannels_toggleSignatures$channels_toggleSignatures *toggleSignatures = [[TLRPCchannels_toggleSignatures$channels_toggleSignatures alloc] init];
+    
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    toggleSignatures.channel = inputChannel;
+    toggleSignatures.flags = enabled ? (1 << 0) : 0;
+    return [[[TGTelegramNetworking instance] requestSignal:toggleSignatures] mapToSignal:^SSignal *(TLUpdates *updates) {
+        id chat = updates.chats.firstObject;
+        TGConversation *conversation = nil;
+        if (chat != nil) {
+            conversation = [[TGConversation alloc] initWithTelegraphChatDesc:chat];
+            if (conversation.conversationId == peerId) {
+                [TGDatabaseInstance() updateChannels:@[conversation]];
+            }
+        }
+        [[TGTelegramNetworking instance] addUpdates:updates];
+        
+        return [SSignal complete];
+    }];
+}
+
++ (SSignal *)messageEditData:(int64_t)peerId accessHash:(int64_t)accessHash messageId:(int32_t)messageId {
+    TLRPCmessages_getMessageEditData$messages_getMessageEditData *getMessageEditData = [[TLRPCmessages_getMessageEditData$messages_getMessageEditData alloc] init];
+    TLInputPeer$inputPeerChannel *inputPeerChannel = [[TLInputPeer$inputPeerChannel alloc] init];
+    inputPeerChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputPeerChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    getMessageEditData.peer = inputPeerChannel;
+    getMessageEditData.n_id = messageId;
+    return [[TGTelegramNetworking instance] requestSignal:getMessageEditData];
+}
+
++ (SSignal *)updatePinnedMessage:(int64_t)peerId accessHash:(int64_t)accessHash messageId:(int32_t)messageId unpin:(bool)unpin notify:(bool)notify {
+    TLRPCmessages_updatePinnedMessage$messages_updatePinnedMessage *updatePinnedMessage = [[TLRPCmessages_updatePinnedMessage$messages_updatePinnedMessage alloc] init];
+    updatePinnedMessage.peer = OGCompatChannelInputPeer(peerId, accessHash);
+    updatePinnedMessage.n_id = messageId;
+    if (unpin) {
+        updatePinnedMessage.flags |= (1 << 1);
+    } else if (!notify) {
+        updatePinnedMessage.flags |= (1 << 0);
+    }
+    
+    return [[[TGTelegramNetworking instance] requestSignal:updatePinnedMessage] mapToSignal:^SSignal *(TLUpdates *updates) {
+        id chat = updates.chats.firstObject;
+        TGConversation *conversation = nil;
+        if (chat != nil) {
+            conversation = [[TGConversation alloc] initWithTelegraphChatDesc:chat];
+            if (conversation.conversationId == peerId) {
+                [TGDatabaseInstance() updateChannels:@[conversation]];
+            }
+        }
+        [[TGTelegramNetworking instance] addUpdates:updates];
+        
+        [TGDatabaseInstance() updateChannelPinnedMessageId:peerId pinnedMessageId:unpin ? 0 : messageId hidden:nil];
+        
+        return [SSignal complete];
+    }];
+}
+
++ (SSignal *)deleteParticipantHistory:(int64_t)peerId accessHash:(int64_t)accessHash participant:(TLInputPeer *)participant {
+    TLRPCchannels_deleteParticipantHistory$channels_deleteParticipantHistory *deleteParticipantHistory = [[TLRPCchannels_deleteParticipantHistory$channels_deleteParticipantHistory alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    deleteParticipantHistory.channel = inputChannel;
+    deleteParticipantHistory.participant = participant;
+    
+    return [[[TGTelegramNetworking instance] requestSignal:deleteParticipantHistory] mapToSignal:^SSignal *(TLmessages_AffectedHistory *affectedHistory) {
+        SSignal *applied = [TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+            [TGDatabaseInstance() addMessagesToChannelAndDispatch:peerId messages:nil deletedMessages:nil holes:nil pts:affectedHistory.pts skipFeedUpdate:true];
+            return nil;
+        }];
+        if (affectedHistory.offset > 0) {
+            return [applied then:[self deleteParticipantHistory:peerId accessHash:accessHash participant:participant]];
+        }
+        return applied;
+    }];
+}
+
++ (SSignal *)removeAllUserMessages:(int64_t)peerId accessHash:(int64_t)accessHash user:(TGUser *)user {
+    TLInputPeer *participant = [TGTelegraphInstance createInputPeerForConversation:user.uid accessHash:user.phoneNumberHash];
+    return [[self deleteParticipantHistory:peerId accessHash:accessHash participant:participant] then:[TGDatabaseInstance() deleteMessagesInChannel:peerId fromUserId:user.uid]];
+}
+
++ (SSignal *)reportUserSpam:(int64_t)peerId accessHash:(int64_t)accessHash user:(TGUser *)user messageIds:(NSArray *)messageIds {
+    TLRPCchannels_reportSpam$channels_reportSpam *reportSpam = [[TLRPCchannels_reportSpam$channels_reportSpam alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    reportSpam.channel = inputChannel;
+    reportSpam.participant = [TGTelegraphInstance createInputPeerForConversation:user.uid accessHash:user.phoneNumberHash];
+    reportSpam.n_id = messageIds;
+    
+    return [[TGTelegramNetworking instance] requestSignal:reportSpam];
+}
+
++ (SSignal *)resolveChannelWithUsername:(NSString *)username {
+    TLRPCcontacts_resolveUsername$contacts_resolveUsername *resolveUsername = [[TLRPCcontacts_resolveUsername$contacts_resolveUsername alloc] init];
+    resolveUsername.username = username;
+
+    return [[[TGTelegramNetworking instance] requestSignal:resolveUsername] mapToSignal:^SSignal *(TLcontacts_ResolvedPeer *resolvedPeer) {
+        if ([resolvedPeer.peer isKindOfClass:[TLPeer$peerChannel class]] && resolvedPeer.chats.count != 0) {
+            TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:resolvedPeer.chats[0]];
+            conversation.kind = TGConversationKindTemporaryChannel;
+            return [[TGChannelManagementSignals addChannel:conversation] takeLast];
+        }
+        else
+        {
+            return [SSignal fail:nil];
+        }
+    }];
+}
+
++ (SSignal *)channelAdminLogEvents:(int64_t)peerId accessHash:(int64_t)accessHash minEntryId:(int64_t)minEntryId count:(int32_t)count filter:(TGChannelEventFilter)filter searchQuery:(NSString *)searchQuery userIds:(NSArray *)userIds {
+    TLRPCchannels_getAdminLog *getAdminLog = [[TLRPCchannels_getAdminLog alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    getAdminLog.channel = inputChannel;
+    getAdminLog.max_id = minEntryId;
+    
+    int32_t filterFlags = 0;
+    if (filter.join) {
+        filterFlags |= (1 << 0);
+    }
+    if (filter.leave) {
+        filterFlags |= (1 << 1);
+    }
+    if (filter.invite) {
+        filterFlags |= (1 << 2);
+    }
+    if (filter.ban) {
+        filterFlags |= (1 << 3);
+    }
+    if (filter.unban) {
+        filterFlags |= (1 << 4);
+    }
+    if (filter.kick) {
+        filterFlags |= (1 << 5);
+    }
+    if (filter.unkick) {
+        filterFlags |= (1 << 6);
+    }
+    if (filter.promote) {
+        filterFlags |= (1 << 7);
+    }
+    if (filter.demote) {
+        filterFlags |= (1 << 8);
+    }
+    if (filter.info) {
+        filterFlags |= (1 << 9);
+    }
+    if (filter.settings) {
+        filterFlags |= (1 << 10);
+    }
+    if (filter.pinned) {
+        filterFlags |= (1 << 11);
+    }
+    if (filter.edit) {
+        filterFlags |= (1 << 12);
+    }
+    if (filter.del) {
+        filterFlags |= (1 << 13);
+    }
+    
+    getAdminLog.flags |= (1 << 0);
+    
+    TLChannelAdminLogEventsFilter$channelAdminLogEventsFilter *eventsFilter = [[TLChannelAdminLogEventsFilter$channelAdminLogEventsFilter alloc] init];
+    eventsFilter.flags = filterFlags;
+    getAdminLog.events_filter = eventsFilter;
+    
+    getAdminLog.q = searchQuery;
+    
+    if (userIds != nil) {
+        NSMutableArray *users = [[NSMutableArray alloc] init];
+        for (NSNumber *userId in userIds) {
+            TGUser *user = [TGDatabaseInstance() loadUser:[userId longLongValue]];
+            if (user != nil) {
+                TLInputUser$inputUser *inputUser = [[TLInputUser$inputUser alloc] init];
+                inputUser.user_id = user.uid;
+                inputUser.access_hash = user.phoneNumberHash;
+                [users addObject:inputUser];
+            }
+        }
+        
+        getAdminLog.flags |= (1 << 1);
+        getAdminLog.admins = users;
+    }
+    
+    getAdminLog.limit = count;
+    
+    return [[[TGTelegramNetworking instance] requestSignal:getAdminLog] map:^id(TLchannels_AdminLogResults *results) {
+        [TGUserDataRequestBuilder executeUserDataUpdate:results.users];
+        NSMutableArray *entries = [[NSMutableArray alloc] init];
+        for (TLChannelAdminLogEvent *event in results.events) {
+            [entries addObject:[[TGChannelAdminLogEntry alloc] initWithTL:event]];
+        }
+        return entries;
+    }];
+}
+
++ (TGCachedConversationMember *)parseMember:(TLChannelParticipant *)participant {
+    int32_t timestamp = 0;
+    bool isCreator = false;
+    TGChannelAdminRights *adminRights = nil;
+    TGChannelBannedRights *bannedRights = nil;
+    int64_t inviterId = 0;
+    int64_t adminInviterId = 0;
+    int64_t kickedById = 0;
+    bool adminCanManage = false;
+    
+    if ([participant isKindOfClass:[TLChannelParticipant$channelParticipant class]]) {
+        timestamp = ((TLChannelParticipant$channelParticipant *)participant).date;
+    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantCreator class]]) {
+        isCreator = true;
+        timestamp = 0;
+    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantAdmin class]]) {
+        adminRights = [[TGChannelAdminRights alloc] initWithTL:((TLChannelParticipant$channelParticipantAdmin *)participant).admin_rights];
+        inviterId = ((TLChannelParticipant$channelParticipantAdmin *)participant).inviter_id;
+        timestamp = ((TLChannelParticipant$channelParticipantAdmin *)participant).date;
+        adminInviterId = ((TLChannelParticipant$channelParticipantAdmin *)participant).promoted_by;
+        adminCanManage = ((TLChannelParticipant$channelParticipantAdmin *)participant).flags & (1 << 0);
+    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantBanned class]]) {
+        bannedRights = [[TGChannelBannedRights alloc] initWithTL:((TLChannelParticipant$channelParticipantBanned *)participant).banned_rights];
+        timestamp = ((TLChannelParticipant$channelParticipantBanned *)participant).date;
+        kickedById = ((TLChannelParticipant$channelParticipantBanned *)participant).kicked_by;
+    } else if ([participant isKindOfClass:[TLChannelParticipant$channelParticipantSelf class]]) {
+        timestamp = ((TLChannelParticipant$channelParticipantSelf *)participant).date;
+        inviterId = ((TLChannelParticipant$channelParticipantSelf *)participant).inviter_id;
+    }
+    
+    return [[TGCachedConversationMember alloc] initWithUid:participant.user_id isCreator:isCreator adminRights:adminRights bannedRights:bannedRights timestamp:timestamp inviterId:inviterId adminInviterId:adminInviterId kickedById:kickedById adminCanManage:adminCanManage];
+}
+
++ (SSignal *)togglePreHistoryHidden:(int64_t)peerId accessHash:(int64_t)accessHash enabled:(bool)enabled {
+    TLRPCchannels_togglePreHistoryHidden$channels_togglePreHistoryHidden *toggleRequest = [[TLRPCchannels_togglePreHistoryHidden$channels_togglePreHistoryHidden alloc] init];
+    TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+    inputChannel.channel_id = TGChannelIdFromPeerId(peerId);
+    inputChannel.access_hash = OGCompatChannelAccessHash(peerId, accessHash);
+    toggleRequest.channel = inputChannel;
+    toggleRequest.enabled = enabled;
+    return [[[TGTelegramNetworking instance] requestSignal:toggleRequest] mapToSignal:^SSignal *(__unused id result) {
+        return [TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+            [TGDatabaseInstance() updateChannelCachedData:peerId block:^TGCachedConversationData *(TGCachedConversationData *data) {
+                if (data != nil) {
+                    return [data updatePreHistory:enabled];
+                }
+                return data;
+            }];
+            return [TGDatabaseInstance() _channelCachedDataSync:peerId];
+        }];
+    }];
+}
+
+static int64_t hashForAdminIds(NSArray *contactIds) {
+    int64_t acc = 0;
+    for (NSNumber *nUid in contactIds) {
+        acc = TGApiHashCombine(acc, [nUid longLongValue]);
+    }
+    return acc;
+}
+
++ (void)reloadForAccountSwitch {
+    @synchronized ([TGChannelManagementSignals class])
+    {
+        OGCompatExtendedInfoManager = nil;
+    }
+}
+
++ (SPipe *)channelAdminRightsUpdatedPipe {
+    static SPipe *pipe = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pipe = [[SPipe alloc] init];
+    });
+    return pipe;
+}
+
++ (SSignal *)updatedChannelAdmins:(int64_t)peerId accessHash:(int64_t)accessHash {
+    SSignal *currentAdmins = [TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^{
+        TGCachedConversationData *data = [TGDatabaseInstance() _channelCachedDataSync:peerId];
+        NSMutableSet *adminIds = [[NSMutableSet alloc] init];
+        for (TGCachedConversationMember *member in data.managementMembers) {
+            [adminIds addObject:@(member.uid)];
+        }
+        return adminIds;
+    }];
+    
+    SSignal *poll = [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^{
+        TGCachedConversationData *data = [TGDatabaseInstance() _channelCachedDataSync:peerId];
+        NSMutableArray *adminIds = [[NSMutableArray alloc] init];
+        for (TGCachedConversationMember *member in data.managementMembers) {
+            [adminIds addObject:@(member.uid)];
+        }
+        [adminIds sortUsingSelector:@selector(compare:)];
+        
+        return [[self channelAdmins:peerId accessHash:accessHash offset:0 count:100 hash:hashForAdminIds(adminIds)] mapToSignal:^SSignal *(NSDictionary *dict) {
+            if ([dict[@"notModified"] boolValue]) {
+                return [SSignal complete];
+            } else {
+                return [TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+                    [TGDatabaseInstance() updateChannelCachedData:peerId block:^TGCachedConversationData *(TGCachedConversationData *current) {
+                        return [current updateManagementMembers:[dict[@"memberDatas"] allValues]];
+                    }];
+                    
+                    NSMutableSet *adminIds = [[NSMutableSet alloc] init];
+                    for (TGCachedConversationMember *member in [dict[@"memberDatas"] allValues]) {
+                        [adminIds addObject:@(member.uid)];
+                    }
+                    return adminIds;
+                }];
+            }
+        }];
+    }] switchToLatest];
+    
+    SSignal *reset = [[SSignal alloc] initWithGenerator:^id<SDisposable>(SSubscriber *subscriber) {
+        [subscriber putNext:@true];
+        return [[[self channelAdminRightsUpdatedPipe].signalProducer() filter:^bool(NSNumber *updatePeerId) {
+            return [updatePeerId longLongValue] == peerId;
+        }] startWithNext:^(__unused id next) {
+            [subscriber putNext:@true];
+        }];
+    }];
+    
+    SSignal *repeatedPoll = [reset mapToSignal:^SSignal *(__unused id next) {
+        return [[poll then:[[SSignal complete] delay:60.0 onQueue:[SQueue concurrentDefaultQueue]]] restart];
+    }];
+    
+    return [currentAdmins then:repeatedPoll];
+}
+
++ (SSignal *)pollQueuedChannels {
+    SSignal *polls = [TGDatabaseInstance() enqueuedChannelPolls];
+    return [[SSignal alloc] initWithGenerator:^id<SDisposable>(__unused SSubscriber *subscriber) {
+        LGRuntimeSyncActivity *activity = [[LGRuntimeSyncActivity alloc] init];
+        id<SDisposable> disposable = [polls startWithNext:^(TGQueuedPeerPoll *poll) {
+            [TGChannelStateSignals requestChannelPoll:poll.peerId];
+        }];
+        [TGDatabaseInstance() dispatchOnDatabaseThread:^{
+            [activity end];
+        } synchronous:false];
+        return [[SBlockDisposable alloc] initWithBlock:^{
+            [activity end];
+            [disposable dispose];
+        }];
+    }];
+}
+
+@end

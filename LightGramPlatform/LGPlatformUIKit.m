@@ -1,0 +1,1489 @@
+#import "LGPlatformUIKit.h"
+#import "LGPlatformVersion.h"
+#import <QuartzCore/QuartzCore.h>
+#import <dlfcn.h>
+#include <float.h>
+#import <objc/runtime.h>
+#import <pthread.h>
+
+CGRect LGPlatformKeyboardEndFrame(NSNotification *notification)
+{
+    if ([notification.name isEqualToString:UIKeyboardWillHideNotification] || [notification.name isEqualToString:UIKeyboardDidHideNotification])
+        return CGRectZero;
+
+    NSDictionary *userInfo = notification.userInfo;
+    NSValue *frameValue = [userInfo objectForKey:UIKeyboardFrameEndUserInfoKey];
+    if (frameValue != nil)
+        return [frameValue CGRectValue];
+
+    NSValue *boundsValue = [userInfo objectForKey:UIKeyboardBoundsUserInfoKey];
+    NSValue *centerValue = [userInfo objectForKey:UIKeyboardCenterEndUserInfoKey];
+    if (boundsValue == nil || centerValue == nil)
+        return CGRectZero;
+
+    CGRect bounds = [boundsValue CGRectValue];
+    CGPoint center = [centerValue CGPointValue];
+    return CGRectMake(center.x - bounds.size.width * 0.5f, center.y - bounds.size.height * 0.5f, bounds.size.width, bounds.size.height);
+}
+
+CGRect LGPlatformKeyboardFrameInView(NSNotification *notification, UIView *view)
+{
+    CGRect frame = LGPlatformKeyboardEndFrame(notification);
+    if (CGRectIsEmpty(frame) || view == nil)
+        return CGRectZero;
+
+    UIWindow *window = view.window;
+    if (window != nil)
+        frame = [window convertRect:frame fromWindow:nil];
+    return [view convertRect:frame fromView:window];
+}
+
+static id LGPlatformObjectProperty(id object, NSString *selectorName)
+{
+    if (object == nil || selectorName.length == 0)
+        return nil;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![object respondsToSelector:selector])
+        return nil;
+    id (*function)(id, SEL) = (id (*)(id, SEL))[object methodForSelector:selector];
+    return function == NULL ? nil : function(object, selector);
+}
+
+static void LGPlatformSetObjectProperty(id object, NSString *selectorName, id value)
+{
+    if (object == nil || selectorName.length == 0)
+        return;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![object respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, id) = (void (*)(id, SEL, id))[object methodForSelector:selector];
+    if (function != NULL)
+        function(object, selector, value);
+}
+
+NSArray *LGPlatformChildViewControllers(UIViewController *viewController)
+{
+    if (LGPlatformMajorVersion() < 4)
+    {
+        if ([viewController isKindOfClass:[UINavigationController class]])
+            return [(UINavigationController *)viewController viewControllers] ?: [NSArray array];
+        if ([viewController isKindOfClass:[UITabBarController class]])
+            return [(UITabBarController *)viewController viewControllers] ?: [NSArray array];
+    }
+
+    id children = LGPlatformObjectProperty(viewController, @"childViewControllers");
+    if (children == nil)
+        return [NSArray array];
+    if ([children isKindOfClass:[NSArray class]])
+        return children;
+    return [children allObjects];
+}
+
+BOOL LGPlatformAccessibilityInvertColorsEnabled(void)
+{
+    BOOL (*function)(void) = (BOOL (*)(void))dlsym(RTLD_DEFAULT, "UIAccessibilityIsInvertColorsEnabled");
+    return function == NULL ? NO : function();
+}
+
+void LGPlatformHideAccessibilityElements(UIView *view)
+{
+    if (view == nil)
+        return;
+
+    SEL selector = NSSelectorFromString(@"setAccessibilityElementsHidden:");
+    if ([view respondsToSelector:selector])
+    {
+        void (*function)(id, SEL, BOOL) = (void (*)(id, SEL, BOOL))[view methodForSelector:selector];
+        if (function != NULL)
+            function(view, selector, YES);
+    }
+    else
+    {
+        view.isAccessibilityElement = NO;
+    }
+}
+
+BOOL LGPlatformSupportsModernLoginIntro(void)
+{
+    return LGPlatformMajorVersion() >= 4;
+}
+
+BOOL LGPlatformControlAnimationsEnabled(void)
+{
+    return LGPlatformMajorVersion() >= 4;
+}
+
+BOOL LGPlatformTransientAnimationsEnabled(void)
+{
+    return LGPlatformMajorVersion() >= 4;
+}
+
+static void (*LGPlatformOriginalLabelSetFont)(id, SEL, UIFont *) = NULL;
+static void (*LGPlatformOriginalButtonLabelSetFont)(id, SEL, UIFont *) = NULL;
+
+static UIFont *LGPlatformLegacyFallbackFont(id object, UIFont *font)
+{
+    if (font != nil)
+        return font;
+
+    UIFont *currentFont = nil;
+    if ([object respondsToSelector:@selector(font)])
+        currentFont = [(UILabel *)object font];
+    return currentFont != nil ? currentFont : [UIFont systemFontOfSize:17.0f];
+}
+
+static void LGPlatformLegacyLabelSetFont(id object, SEL selector, UIFont *font)
+{
+    if (LGPlatformOriginalLabelSetFont != NULL)
+        LGPlatformOriginalLabelSetFont(object, selector, LGPlatformLegacyFallbackFont(object, font));
+}
+
+static void LGPlatformLegacyButtonLabelSetFont(id object, SEL selector, UIFont *font)
+{
+    if (LGPlatformOriginalButtonLabelSetFont != NULL)
+        LGPlatformOriginalButtonLabelSetFont(object, selector, LGPlatformLegacyFallbackFont(object, font));
+}
+
+typedef void (*LGPlatformCollectionDataSetLayoutAttributesFunction)(id, SEL, id, NSInteger);
+typedef id (*LGPlatformCollectionDataScreenPageFunction)(id, SEL, CGPoint);
+typedef CGRect (*LGPlatformLayoutAttributesFrameFunction)(id, SEL);
+
+static LGPlatformCollectionDataSetLayoutAttributesFunction LGPlatformOriginalCollectionDataSetLayoutAttributes = NULL;
+static LGPlatformCollectionDataScreenPageFunction LGPlatformCollectionDataScreenPage = NULL;
+static SEL LGPlatformCollectionDataScreenPageSelector = NULL;
+static CGFloat LGPlatformCollectionDataPageStep = 0.0f;
+static ptrdiff_t LGPlatformCollectionDataItemCountOffset = -1;
+
+static void LGPlatformCollectionDataSetLayoutAttributes(id data, SEL selector, id attributes, NSInteger globalIndex)
+{
+    if (LGPlatformCollectionDataItemCountOffset >= 0)
+    {
+        int itemCount = *(int *)((uint8_t *)(__bridge void *)data + LGPlatformCollectionDataItemCountOffset);
+        if (globalIndex < 0 || globalIndex >= itemCount)
+            return;
+    }
+
+    LGPlatformOriginalCollectionDataSetLayoutAttributes(data, selector, attributes, globalIndex);
+
+    if (attributes == nil || globalIndex < 0)
+        return;
+    SEL frameSelector = @selector(frame);
+    if (![attributes respondsToSelector:frameSelector])
+        return;
+    LGPlatformLayoutAttributesFrameFunction frameFunction = (LGPlatformLayoutAttributesFrameFunction)[attributes methodForSelector:frameSelector];
+    if (frameFunction == NULL)
+        return;
+    CGRect frame = frameFunction(attributes, frameSelector);
+    CGFloat step = LGPlatformCollectionDataPageStep;
+    if (CGRectIsNull(frame) || CGRectIsInfinite(frame) || step < 1.0f || (frame.size.width <= step && frame.size.height <= step))
+        return;
+
+    Class indexSetClass = [NSMutableIndexSet class];
+    CGFloat minX = CGRectGetMinX(frame);
+    CGFloat minY = CGRectGetMinY(frame);
+    CGFloat maxX = MAX(minX, CGRectGetMaxX(frame) - 1.0f);
+    CGFloat maxY = MAX(minY, CGRectGetMaxY(frame) - 1.0f);
+    for (CGFloat y = minY; ; y += step)
+    {
+        CGFloat pointY = MIN(y, maxY);
+        for (CGFloat x = minX; ; x += step)
+        {
+            CGFloat pointX = MIN(x, maxX);
+            id page = LGPlatformCollectionDataScreenPage(data, LGPlatformCollectionDataScreenPageSelector, CGPointMake(pointX, pointY));
+            if ([page isKindOfClass:indexSetClass])
+                [(NSMutableIndexSet *)page addIndex:(NSUInteger)globalIndex];
+            if (pointX >= maxX)
+                break;
+        }
+        if (pointY >= maxY)
+            break;
+    }
+}
+
+static void LGPlatformInstallCollectionViewDataGuard(void)
+{
+    Class dataClass = NSClassFromString(@"UICollectionViewData");
+    if (dataClass == Nil)
+        return;
+
+    SEL setSelector = NSSelectorFromString(@"_setLayoutAttributes:atGlobalItemIndex:");
+    SEL pageSelector = NSSelectorFromString(@"_screenPageForPoint:");
+    Method setMethod = class_getInstanceMethod(dataClass, setSelector);
+    Method pageMethod = class_getInstanceMethod(dataClass, pageSelector);
+    if (setMethod == NULL || pageMethod == NULL || method_getNumberOfArguments(setMethod) != 4 || method_getNumberOfArguments(pageMethod) != 3)
+        return;
+
+    char returnType[8] = { 0 };
+    method_getReturnType(pageMethod, returnType, sizeof(returnType));
+    if (returnType[0] != '@')
+        return;
+    char pointType[64] = { 0 };
+    method_getArgumentType(pageMethod, 2, pointType, sizeof(pointType));
+    if (strncmp(pointType, "{CGPoint=", 9) != 0)
+        return;
+
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    CGFloat step = MIN(screenSize.width, screenSize.height);
+    if (step < 1.0f)
+        return;
+
+    Ivar itemCountIvar = class_getInstanceVariable(dataClass, "_numItems");
+    const char *itemCountType = itemCountIvar == NULL ? NULL : ivar_getTypeEncoding(itemCountIvar);
+    if (itemCountType != NULL && strcmp(itemCountType, @encode(int)) == 0)
+        LGPlatformCollectionDataItemCountOffset = ivar_getOffset(itemCountIvar);
+
+    LGPlatformCollectionDataPageStep = step;
+    LGPlatformCollectionDataScreenPageSelector = pageSelector;
+    LGPlatformCollectionDataScreenPage = (LGPlatformCollectionDataScreenPageFunction)method_getImplementation(pageMethod);
+    LGPlatformOriginalCollectionDataSetLayoutAttributes = (LGPlatformCollectionDataSetLayoutAttributesFunction)method_setImplementation(setMethod, (IMP)LGPlatformCollectionDataSetLayoutAttributes);
+}
+
+#if !defined(LIGHTGRAM_IOS3_APPLICATION_BUILD)
+typedef void (*LGPlatformGestureRecognizerSetDelegateFunction)(id, SEL, id);
+
+static LGPlatformGestureRecognizerSetDelegateFunction LGPlatformOriginalGestureRecognizerSetDelegate = NULL;
+static pthread_mutex_t LGPlatformGestureDelegateMutex;
+static char LGPlatformGestureDelegateSentinelKey;
+static char LGPlatformGestureDelegateBindingKey;
+
+@class LGPlatformGestureDelegateSentinel;
+
+@interface LGPlatformGestureDelegateBinding : NSObject
+{
+@public
+    __unsafe_unretained id _recognizer;
+    __unsafe_unretained LGPlatformGestureDelegateSentinel *_sentinel;
+}
+@end
+
+@interface LGPlatformGestureDelegateSentinel : NSObject
+{
+@public
+    CFMutableSetRef _bindings;
+}
+@end
+
+@implementation LGPlatformGestureDelegateSentinel
+
+- (instancetype)init
+{
+    self = [super init];
+    if (self != nil)
+        _bindings = CFSetCreateMutable(kCFAllocatorDefault, 0, NULL);
+    return self;
+}
+
+- (void)dealloc
+{
+    pthread_mutex_lock(&LGPlatformGestureDelegateMutex);
+    CFIndex count = CFSetGetCount(_bindings);
+    if (count > 0)
+    {
+        const void **bindings = (const void **)malloc(sizeof(void *) * (size_t)count);
+        if (bindings == NULL)
+            abort();
+        CFSetGetValues(_bindings, bindings);
+        CFSetRemoveAllValues(_bindings);
+        for (CFIndex index = 0; index < count; index++)
+        {
+            LGPlatformGestureDelegateBinding *binding = (__bridge LGPlatformGestureDelegateBinding *)bindings[index];
+            binding->_sentinel = nil;
+            LGPlatformOriginalGestureRecognizerSetDelegate(binding->_recognizer, @selector(setDelegate:), nil);
+        }
+        free(bindings);
+    }
+    pthread_mutex_unlock(&LGPlatformGestureDelegateMutex);
+    CFRelease(_bindings);
+}
+
+@end
+
+@implementation LGPlatformGestureDelegateBinding
+
+- (void)dealloc
+{
+    pthread_mutex_lock(&LGPlatformGestureDelegateMutex);
+    if (_sentinel != nil)
+        CFSetRemoveValue(_sentinel->_bindings, (__bridge const void *)self);
+    pthread_mutex_unlock(&LGPlatformGestureDelegateMutex);
+}
+
+@end
+
+static void LGPlatformGestureRecognizerSetDelegate(id recognizer, SEL selector, id delegate)
+{
+    LGPlatformOriginalGestureRecognizerSetDelegate(recognizer, selector, delegate);
+
+    LGPlatformGestureDelegateSentinel *sentinel = nil;
+    if (delegate != nil && delegate != recognizer)
+    {
+        sentinel = objc_getAssociatedObject(delegate, &LGPlatformGestureDelegateSentinelKey);
+        if (sentinel == nil)
+        {
+            sentinel = [[LGPlatformGestureDelegateSentinel alloc] init];
+            objc_setAssociatedObject(delegate, &LGPlatformGestureDelegateSentinelKey, sentinel, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+
+    LGPlatformGestureDelegateBinding *binding = objc_getAssociatedObject(recognizer, &LGPlatformGestureDelegateBindingKey);
+    if (binding == nil)
+    {
+        if (sentinel == nil)
+            return;
+        binding = [[LGPlatformGestureDelegateBinding alloc] init];
+        binding->_recognizer = recognizer;
+        objc_setAssociatedObject(recognizer, &LGPlatformGestureDelegateBindingKey, binding, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    pthread_mutex_lock(&LGPlatformGestureDelegateMutex);
+    if (binding->_sentinel != sentinel)
+    {
+        if (binding->_sentinel != nil)
+            CFSetRemoveValue(binding->_sentinel->_bindings, (__bridge const void *)binding);
+        binding->_sentinel = sentinel;
+        if (sentinel != nil)
+            CFSetAddValue(sentinel->_bindings, (__bridge const void *)binding);
+    }
+    pthread_mutex_unlock(&LGPlatformGestureDelegateMutex);
+}
+
+static BOOL LGPlatformGestureRecognizerDelegateIsZeroing(Class recognizerClass)
+{
+    objc_property_t property = class_getProperty(recognizerClass, "delegate");
+    if (property == NULL)
+        return NO;
+    const char *attributes = property_getAttributes(property);
+    if (attributes == NULL)
+        return NO;
+    for (const char *attribute = attributes; attribute != NULL; attribute = strchr(attribute, ','))
+    {
+        if (*attribute == ',')
+            attribute++;
+        if (attribute[0] == 'W' && (attribute[1] == ',' || attribute[1] == '\0'))
+            return YES;
+    }
+    return NO;
+}
+
+static void LGPlatformInstallGestureRecognizerDelegateGuard(void)
+{
+    Class recognizerClass = NSClassFromString(@"UIGestureRecognizer");
+    if (recognizerClass == Nil || LGPlatformGestureRecognizerDelegateIsZeroing(recognizerClass))
+        return;
+
+    Method method = class_getInstanceMethod(recognizerClass, @selector(setDelegate:));
+    if (method == NULL)
+        return;
+
+    pthread_mutexattr_t attributes;
+    pthread_mutexattr_init(&attributes);
+    pthread_mutexattr_settype(&attributes, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&LGPlatformGestureDelegateMutex, &attributes);
+    pthread_mutexattr_destroy(&attributes);
+
+    LGPlatformOriginalGestureRecognizerSetDelegate = (LGPlatformGestureRecognizerSetDelegateFunction)method_getImplementation(method);
+    method_setImplementation(method, (IMP)LGPlatformGestureRecognizerSetDelegate);
+}
+#endif
+
+void LGPlatformInstallUIKitGuards(void)
+{
+    static BOOL installed = NO;
+    if (installed)
+        return;
+    installed = YES;
+
+    LGPlatformInstallCollectionViewDataGuard();
+#if !defined(LIGHTGRAM_IOS3_APPLICATION_BUILD)
+    LGPlatformInstallGestureRecognizerDelegateGuard();
+#endif
+
+    if (LGPlatformMajorVersion() >= 4)
+        return;
+
+    SEL selector = @selector(setFont:);
+    Method labelMethod = class_getInstanceMethod([UILabel class], selector);
+    IMP labelImplementation = labelMethod == NULL ? NULL : method_getImplementation(labelMethod);
+
+    Class buttonLabelClass = NSClassFromString(@"UIButtonLabel");
+    Method buttonLabelMethod = buttonLabelClass == Nil ? NULL : class_getInstanceMethod(buttonLabelClass, selector);
+    IMP buttonLabelImplementation = buttonLabelMethod == NULL ? NULL : method_getImplementation(buttonLabelMethod);
+
+    if (buttonLabelClass != Nil && buttonLabelMethod != NULL && buttonLabelImplementation != labelImplementation)
+    {
+        LGPlatformOriginalButtonLabelSetFont = (void (*)(id, SEL, UIFont *))buttonLabelImplementation;
+        class_replaceMethod(buttonLabelClass, selector, (IMP)LGPlatformLegacyButtonLabelSetFont, method_getTypeEncoding(buttonLabelMethod));
+    }
+
+    if (labelMethod != NULL)
+    {
+        LGPlatformOriginalLabelSetFont = (void (*)(id, SEL, UIFont *))labelImplementation;
+        method_setImplementation(labelMethod, (IMP)LGPlatformLegacyLabelSetFont);
+    }
+}
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 32000
+static char LGPlatformLegacyInputAccessoryViewKey;
+static char LGPlatformLegacyInputViewKey;
+
+@interface LGPlatformLegacyTextInputPresenter : NSObject
+{
+    UIView *_activeField;
+    UIView *_presentedAccessoryView;
+    UIView *_presentedInputView;
+    CGRect _keyboardBounds;
+}
++ (instancetype)sharedPresenter;
+- (void)refresh;
+@end
+
+@implementation LGPlatformLegacyTextInputPresenter
+
++ (instancetype)sharedPresenter
+{
+    static LGPlatformLegacyTextInputPresenter *presenter = nil;
+    if (presenter == nil)
+        presenter = [[self alloc] init];
+    return presenter;
+}
+
+- (instancetype)init
+{
+    self = [super init];
+    if (self != nil)
+    {
+        NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+        [center addObserver:self selector:@selector(textFieldDidBeginEditing:) name:UITextFieldTextDidBeginEditingNotification object:nil];
+        [center addObserver:self selector:@selector(textFieldDidEndEditing:) name:UITextFieldTextDidEndEditingNotification object:nil];
+        [center addObserver:self selector:@selector(textFieldDidBeginEditing:) name:UITextViewTextDidBeginEditingNotification object:nil];
+        [center addObserver:self selector:@selector(textFieldDidEndEditing:) name:UITextViewTextDidEndEditingNotification object:nil];
+        [center addObserver:self selector:@selector(keyboardDidShow:) name:UIKeyboardDidShowNotification object:nil];
+        [center addObserver:self selector:@selector(keyboardDidHide:) name:UIKeyboardDidHideNotification object:nil];
+    }
+    return self;
+}
+
+- (void)removePresentedViews
+{
+    [_presentedAccessoryView removeFromSuperview];
+    [_presentedInputView removeFromSuperview];
+    _presentedAccessoryView = nil;
+    _presentedInputView = nil;
+}
+
+- (UIWindow *)keyboardWindow
+{
+    UIWindow *fieldWindow = _activeField.window;
+    UIWindow *result = nil;
+    for (UIWindow *window in [[UIApplication sharedApplication] windows])
+    {
+        if (!window.hidden && window != fieldWindow && (result == nil || window.windowLevel >= result.windowLevel))
+            result = window;
+    }
+    return result == nil ? fieldWindow : result;
+}
+
+- (CGFloat)heightForView:(UIView *)view fallback:(CGFloat)fallback
+{
+    if (view == nil)
+        return 0.0f;
+    CGFloat height = view.bounds.size.height;
+    if (height <= 0.0f)
+    {
+        [view sizeToFit];
+        height = view.bounds.size.height;
+    }
+    return height > 0.0f ? height : fallback;
+}
+
+- (void)refresh
+{
+    [self removePresentedViews];
+    if (_activeField == nil || ![_activeField isFirstResponder])
+        return;
+
+    UIView *accessoryView = objc_getAssociatedObject(_activeField, &LGPlatformLegacyInputAccessoryViewKey);
+    UIView *inputView = objc_getAssociatedObject(_activeField, &LGPlatformLegacyInputViewKey);
+    if (accessoryView == nil && inputView == nil)
+        return;
+
+    UIWindow *window = [self keyboardWindow];
+    if (window == nil)
+        return;
+
+    CGFloat width = window.bounds.size.width;
+    CGFloat inputHeight = [self heightForView:inputView fallback:216.0f];
+    CGFloat accessoryHeight = [self heightForView:accessoryView fallback:44.0f];
+    CGFloat keyboardHeight = _keyboardBounds.size.height > 0.0f ? MIN(_keyboardBounds.size.width, _keyboardBounds.size.height) : 216.0f;
+    CGFloat bottom = window.bounds.size.height;
+
+    if (inputView != nil)
+    {
+        inputView.frame = CGRectMake(0.0f, bottom - inputHeight, width, inputHeight);
+        inputView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+        [window addSubview:inputView];
+        _presentedInputView = inputView;
+        bottom -= inputHeight;
+    }
+    else
+        bottom -= keyboardHeight;
+
+    if (accessoryView != nil)
+    {
+        accessoryView.frame = CGRectMake(0.0f, bottom - accessoryHeight, width, accessoryHeight);
+        accessoryView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+        [window addSubview:accessoryView];
+        _presentedAccessoryView = accessoryView;
+    }
+}
+
+- (void)textFieldDidBeginEditing:(NSNotification *)notification
+{
+    _activeField = [notification object];
+}
+
+- (void)textFieldDidEndEditing:(NSNotification *)notification
+{
+    if ([notification object] == _activeField)
+    {
+        [self removePresentedViews];
+        _activeField = nil;
+    }
+}
+
+- (void)keyboardDidShow:(NSNotification *)notification
+{
+    NSValue *boundsValue = [[notification userInfo] objectForKey:UIKeyboardBoundsUserInfoKey];
+    _keyboardBounds = boundsValue == nil ? CGRectZero : [boundsValue CGRectValue];
+    [self refresh];
+}
+
+- (void)keyboardDidHide:(NSNotification *)notification
+{
+    [self removePresentedViews];
+    _keyboardBounds = CGRectZero;
+}
+
+@end
+#endif
+
+void LGPlatformSetStatusBarHidden(UIApplication *application, BOOL hidden, NSInteger animation)
+{
+    if (application == nil)
+        return;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    [application setStatusBarHidden:hidden withAnimation:(UIStatusBarAnimation)animation];
+#else
+    [application setStatusBarHidden:hidden animated:animation != 0];
+#endif
+}
+
+void LGPlatformSetTextFieldSelectionRange(UITextField *textField, NSRange range)
+{
+    if (textField == nil)
+        return;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    UITextPosition *startPosition = [textField positionFromPosition:textField.beginningOfDocument offset:(NSInteger)range.location];
+    UITextPosition *endPosition = [textField positionFromPosition:textField.beginningOfDocument offset:(NSInteger)NSMaxRange(range)];
+    if (startPosition != nil && endPosition != nil)
+        textField.selectedTextRange = [textField textRangeFromPosition:startPosition toPosition:endPosition];
+#else
+    SEL selector = NSSelectorFromString(@"setSelectionRange:");
+    if ([textField respondsToSelector:selector])
+    {
+        void (*function)(id, SEL, NSRange) = (void (*)(id, SEL, NSRange))[textField methodForSelector:selector];
+        if (function != NULL)
+            function(textField, selector, range);
+    }
+#endif
+}
+
+CGRect LGPlatformTextViewStartCaretRect(UITextView *textView)
+{
+    if (textView == nil)
+        return CGRectNull;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    if (![textView respondsToSelector:@selector(beginningOfDocument)] || ![textView respondsToSelector:@selector(caretRectForPosition:)])
+        return CGRectNull;
+    UITextPosition *start = textView.beginningOfDocument;
+    return start == nil ? CGRectNull : [textView caretRectForPosition:start];
+#else
+    SEL startSelector = NSSelectorFromString(@"beginningOfDocument");
+    SEL caretSelector = NSSelectorFromString(@"caretRectForPosition:");
+    if (![textView respondsToSelector:startSelector] || ![textView respondsToSelector:caretSelector])
+        return CGRectNull;
+    id (*startFunction)(id, SEL) = (id (*)(id, SEL))[textView methodForSelector:startSelector];
+    CGRect (*caretFunction)(id, SEL, id) = (CGRect (*)(id, SEL, id))[textView methodForSelector:caretSelector];
+    if (startFunction == NULL || caretFunction == NULL)
+        return CGRectNull;
+    id start = startFunction(textView, startSelector);
+    return start == nil ? CGRectNull : caretFunction(textView, caretSelector, start);
+#endif
+}
+
+void LGPlatformSetTextFieldInputAccessoryView(UITextField *textField, UIView *accessoryView)
+{
+    if (textField == nil)
+        return;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    textField.inputAccessoryView = accessoryView;
+#else
+    objc_setAssociatedObject(textField, &LGPlatformLegacyInputAccessoryViewKey, accessoryView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    LGPlatformLegacyTextInputPresenter *presenter = [LGPlatformLegacyTextInputPresenter sharedPresenter];
+    if ([textField isFirstResponder])
+        [presenter refresh];
+#endif
+}
+
+void LGPlatformSetTextFieldInputView(UITextField *textField, UIView *inputView)
+{
+    LGPlatformSetTextInputView(textField, inputView);
+}
+
+UIView *LGPlatformTextInputView(id textInput)
+{
+    if (textInput == nil)
+        return nil;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    return LGPlatformObjectProperty(textInput, @"inputView");
+#else
+    return objc_getAssociatedObject(textInput, &LGPlatformLegacyInputViewKey);
+#endif
+}
+
+void LGPlatformSetTextInputView(id textInput, UIView *inputView)
+{
+    if (textInput == nil)
+        return;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    LGPlatformSetObjectProperty(textInput, @"setInputView:", inputView);
+#else
+    objc_setAssociatedObject(textInput, &LGPlatformLegacyInputViewKey, inputView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    LGPlatformLegacyTextInputPresenter *presenter = [LGPlatformLegacyTextInputPresenter sharedPresenter];
+    if ([textInput isFirstResponder])
+        [presenter refresh];
+#endif
+}
+
+void LGPlatformDisableSpellChecking(id textInput)
+{
+    if (textInput == nil)
+        return;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    if ([textInput respondsToSelector:@selector(setSpellCheckingType:)])
+        [textInput setSpellCheckingType:UITextSpellCheckingTypeNo];
+#else
+    if ([textInput respondsToSelector:@selector(setAutocorrectionType:)])
+        [textInput setAutocorrectionType:UITextAutocorrectionTypeNo];
+#endif
+}
+
+static void LGPlatformSetRectProperty(id object, NSString *selectorName, CGRect value)
+{
+    if (object == nil || selectorName.length == 0)
+        return;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![object respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, CGRect) = (void (*)(id, SEL, CGRect))[object methodForSelector:selector];
+    if (function != NULL)
+        function(object, selector, value);
+}
+
+static void LGPlatformSetUnsignedIntegerProperty(id object, NSString *selectorName, NSUInteger value)
+{
+    if (object == nil || selectorName.length == 0)
+        return;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![object respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, NSUInteger) = (void (*)(id, SEL, NSUInteger))[object methodForSelector:selector];
+    if (function != NULL)
+        function(object, selector, value);
+}
+
+static BOOL LGPlatformBoolProperty(id object, NSString *selectorName)
+{
+    if (object == nil || selectorName.length == 0)
+        return NO;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![object respondsToSelector:selector])
+        return NO;
+    BOOL (*function)(id, SEL) = (BOOL (*)(id, SEL))[object methodForSelector:selector];
+    return function == NULL ? NO : function(object, selector);
+}
+
+static IMP LGPlatformSuperclassImplementation(Class currentClass, NSString *selectorName)
+{
+    if (currentClass == Nil || selectorName.length == 0)
+        return NULL;
+    Class superclass = class_getSuperclass(currentClass);
+    if (superclass == Nil)
+        return NULL;
+    Method method = class_getInstanceMethod(superclass, NSSelectorFromString(selectorName));
+    return method == NULL ? NULL : method_getImplementation(method);
+}
+
+static NSString *LGPlatformStringConstant(const char *symbolName, NSString *fallback)
+{
+    void *symbol = dlsym(RTLD_DEFAULT, symbolName);
+    if (symbol != NULL)
+    {
+        NSString * __unsafe_unretained *value = (NSString * __unsafe_unretained *)symbol;
+        if (value != NULL && *value != nil)
+            return *value;
+    }
+    return fallback;
+}
+
+void LGPlatformSetExclusiveTouch(UIView *view, BOOL enabled)
+{
+    SEL selector = NSSelectorFromString(@"setExclusiveTouch:");
+    if (view == nil || ![view respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, BOOL) = (void (*)(id, SEL, BOOL))[view methodForSelector:selector];
+    if (function != NULL)
+        function(view, selector, enabled);
+}
+
+void LGPlatformSetViewRasterization(UIView *view, BOOL enabled, CGFloat scale)
+{
+    if (view == nil)
+        return;
+    CALayer *layer = [view layer];
+    SEL rasterSelector = NSSelectorFromString(@"setShouldRasterize:");
+    if ([layer respondsToSelector:rasterSelector])
+    {
+        void (*setRasterize)(id, SEL, BOOL) = (void (*)(id, SEL, BOOL))[layer methodForSelector:rasterSelector];
+        if (setRasterize != NULL)
+            setRasterize(layer, rasterSelector, enabled);
+    }
+    SEL scaleSelector = NSSelectorFromString(@"setRasterizationScale:");
+    if (enabled && [layer respondsToSelector:scaleSelector])
+    {
+        void (*setScale)(id, SEL, CGFloat) = (void (*)(id, SEL, CGFloat))[layer methodForSelector:scaleSelector];
+        if (setScale != NULL)
+            setScale(layer, scaleSelector, scale);
+    }
+}
+
+
+void LGPlatformSetLayerContentsScale(CALayer *layer, CGFloat scale)
+{
+    if (layer == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"setContentsScale:");
+    if (![layer respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, CGFloat) = (void (*)(id, SEL, CGFloat))[layer methodForSelector:selector];
+    if (function != NULL)
+        function(layer, selector, scale);
+}
+
+
+void LGPlatformSetLabelMinimumScaleFactor(UILabel *label, CGFloat minimumScaleFactor)
+{
+    if (label == nil)
+        return;
+    CGFloat factor = MAX(0.0f, minimumScaleFactor);
+    SEL selector = NSSelectorFromString(@"setMinimumScaleFactor:");
+    if ([label respondsToSelector:selector])
+    {
+        void (*function)(id, SEL, CGFloat) = (void (*)(id, SEL, CGFloat))[label methodForSelector:selector];
+        if (function != NULL)
+        {
+            function(label, selector, factor);
+            return;
+        }
+    }
+    label.adjustsFontSizeToFitWidth = YES;
+    label.minimumFontSize = label.font.pointSize * factor;
+}
+
+BOOL LGPlatformSuperclassViewTranslatesAutoresizingMaskIntoConstraints(UIView *view, Class currentClass)
+{
+    if (view == nil)
+        return YES;
+    NSString *selectorName = @"translatesAutoresizingMaskIntoConstraints";
+    IMP implementation = LGPlatformSuperclassImplementation(currentClass, selectorName);
+    if (implementation == NULL)
+        return YES;
+    BOOL (*function)(id, SEL) = (BOOL (*)(id, SEL))implementation;
+    return function(view, NSSelectorFromString(selectorName));
+}
+
+void LGPlatformSetViewTranslatesAutoresizingMaskIntoConstraints(UIView *view, BOOL enabled)
+{
+    if (view == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"setTranslatesAutoresizingMaskIntoConstraints:");
+    if (![view respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, BOOL) = (void (*)(id, SEL, BOOL))[view methodForSelector:selector];
+    if (function != NULL)
+        function(view, selector, enabled);
+}
+
+UIEdgeInsets LGPlatformSuperclassViewAlignmentRectInsets(UIView *view, Class currentClass)
+{
+    if (view == nil)
+        return UIEdgeInsetsMake(0.0f, 0.0f, 0.0f, 0.0f);
+    NSString *selectorName = @"alignmentRectInsets";
+    IMP implementation = LGPlatformSuperclassImplementation(currentClass, selectorName);
+    if (implementation == NULL)
+        return UIEdgeInsetsMake(0.0f, 0.0f, 0.0f, 0.0f);
+    UIEdgeInsets (*function)(id, SEL) = (UIEdgeInsets (*)(id, SEL))implementation;
+    return function(view, NSSelectorFromString(selectorName));
+}
+
+CGSize LGPlatformViewIntrinsicContentSize(UIView *view)
+{
+    if (view == nil)
+        return CGSizeZero;
+    SEL selector = NSSelectorFromString(@"intrinsicContentSize");
+    if ([view respondsToSelector:selector])
+    {
+        CGSize (*function)(id, SEL) = (CGSize (*)(id, SEL))[view methodForSelector:selector];
+        if (function != NULL)
+            return function(view, selector);
+    }
+    return [view sizeThatFits:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)];
+}
+
+void LGPlatformInvalidateViewIntrinsicContentSize(UIView *view)
+{
+    if (view == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"invalidateIntrinsicContentSize");
+    if (![view respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL) = (void (*)(id, SEL))[view methodForSelector:selector];
+    if (function != NULL)
+        function(view, selector);
+}
+
+void LGPlatformSetTableViewSectionIndexColor(UITableView *tableView, UIColor *color)
+{
+    LGPlatformSetObjectProperty(tableView, @"setSectionIndexColor:", color);
+}
+
+void LGPlatformSetTableViewSectionIndexBackgroundColor(UITableView *tableView, UIColor *color)
+{
+    LGPlatformSetObjectProperty(tableView, @"setSectionIndexBackgroundColor:", color);
+}
+
+void LGPlatformSetTableViewSectionIndexTrackingBackgroundColor(UITableView *tableView, UIColor *color)
+{
+    LGPlatformSetObjectProperty(tableView, @"setSectionIndexTrackingBackgroundColor:", color);
+}
+
+BOOL LGPlatformSetSwitchColors(UISwitch *switchView, UIColor *onTintColor, UIColor *tintColor)
+{
+    if (switchView == nil || ![switchView respondsToSelector:NSSelectorFromString(@"setOnTintColor:")])
+        return NO;
+    LGPlatformSetObjectProperty(switchView, @"setOnTintColor:", onTintColor);
+    LGPlatformSetObjectProperty(switchView, @"setTintColor:", tintColor);
+    return YES;
+}
+
+void LGPlatformSetSwitchThumbTintColor(UISwitch *switchView, UIColor *color)
+{
+    LGPlatformSetObjectProperty(switchView, @"setThumbTintColor:", color);
+}
+
+BOOL LGPlatformPresentActivityItems(UIViewController *presenter, NSArray *items, UIView *sourceView, CGRect sourceRect, UIBarButtonItem *barButtonItem, NSUInteger permittedArrowDirections, void (^completion)(void))
+{
+    if (presenter == nil || items.count == 0)
+        return NO;
+
+    Class activityClass = NSClassFromString(@"UIActivityViewController");
+    if (activityClass == Nil)
+        return NO;
+
+    id activityController = [activityClass alloc];
+    SEL initializer = NSSelectorFromString(@"initWithActivityItems:applicationActivities:");
+    if (![activityController respondsToSelector:initializer])
+        return NO;
+
+    id (*initialize)(id, SEL, id, id) = (id (*)(id, SEL, id, id))[activityController methodForSelector:initializer];
+    if (initialize == NULL)
+        return NO;
+
+    activityController = initialize(activityController, initializer, items, nil);
+    if (activityController == nil)
+        return NO;
+
+    id popoverController = LGPlatformObjectProperty(activityController, @"popoverPresentationController");
+    if (popoverController != nil)
+    {
+        if (barButtonItem != nil)
+            LGPlatformSetObjectProperty(popoverController, @"setBarButtonItem:", barButtonItem);
+        else if (sourceView != nil)
+        {
+            LGPlatformSetObjectProperty(popoverController, @"setSourceView:", sourceView);
+            LGPlatformSetRectProperty(popoverController, @"setSourceRect:", sourceRect);
+        }
+        LGPlatformSetUnsignedIntegerProperty(popoverController, @"setPermittedArrowDirections:", permittedArrowDirections);
+    }
+
+    SEL presentSelector = NSSelectorFromString(@"presentViewController:animated:completion:");
+    if (![presenter respondsToSelector:presentSelector])
+        return NO;
+    void (*present)(id, SEL, id, BOOL, void (^)(void)) = (void (*)(id, SEL, id, BOOL, void (^)(void)))[presenter methodForSelector:presentSelector];
+    if (present == NULL)
+        return NO;
+    present(presenter, presentSelector, activityController, YES, completion);
+    return YES;
+}
+
+void LGPlatformBeginReceivingRemoteControlEvents(UIApplication *application)
+{
+    if (application == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"beginReceivingRemoteControlEvents");
+    if (![application respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL) = (void (*)(id, SEL))[application methodForSelector:selector];
+    if (function != NULL)
+        function(application, selector);
+}
+
+void LGPlatformEndReceivingRemoteControlEvents(UIApplication *application)
+{
+    if (application == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"endReceivingRemoteControlEvents");
+    if (![application respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL) = (void (*)(id, SEL))[application methodForSelector:selector];
+    if (function != NULL)
+        function(application, selector);
+}
+
+LGPlatformBackgroundTaskIdentifier LGPlatformBeginBackgroundTask(UIApplication *application, void (^expirationHandler)(void))
+{
+    SEL selector = NSSelectorFromString(@"beginBackgroundTaskWithExpirationHandler:");
+    if (application == nil || ![application respondsToSelector:selector])
+        return LGPlatformBackgroundTaskInvalid;
+    LGPlatformBackgroundTaskIdentifier (*function)(id, SEL, void (^)(void)) = (LGPlatformBackgroundTaskIdentifier (*)(id, SEL, void (^)(void)))[application methodForSelector:selector];
+    return function == NULL ? LGPlatformBackgroundTaskInvalid : function(application, selector, expirationHandler);
+}
+
+void LGPlatformEndBackgroundTask(UIApplication *application, LGPlatformBackgroundTaskIdentifier identifier)
+{
+    if (application == nil || identifier == LGPlatformBackgroundTaskInvalid)
+        return;
+    SEL selector = NSSelectorFromString(@"endBackgroundTask:");
+    if (![application respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, LGPlatformBackgroundTaskIdentifier) = (void (*)(id, SEL, LGPlatformBackgroundTaskIdentifier))[application methodForSelector:selector];
+    if (function != NULL)
+        function(application, selector, identifier);
+}
+
+void LGPlatformCancelAllLocalNotifications(UIApplication *application)
+{
+    if (application == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"cancelAllLocalNotifications");
+    if (![application respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL) = (void (*)(id, SEL))[application methodForSelector:selector];
+    if (function != NULL)
+        function(application, selector);
+}
+
+BOOL LGPlatformViewControllerIsTransitioning(UIViewController *viewController)
+{
+    return LGPlatformBoolProperty(viewController, @"isBeingDismissed") || LGPlatformBoolProperty(viewController, @"isBeingPresented");
+}
+
+NSURL *LGPlatformBundleResourceURL(NSBundle *bundle, NSString *name, NSString *extension)
+{
+    if (bundle == nil || name.length == 0)
+        return nil;
+    NSString *path = [bundle pathForResource:name ofType:extension];
+    return path.length == 0 ? nil : [NSURL fileURLWithPath:path];
+}
+
+void LGPlatformConfigureWebViewMediaPlayback(id webView, BOOL allowsInlinePlayback, BOOL requiresUserAction)
+{
+    if (webView == nil)
+        return;
+    SEL inlineSelector = NSSelectorFromString(@"setAllowsInlineMediaPlayback:");
+    if ([webView respondsToSelector:inlineSelector])
+    {
+        void (*setInline)(id, SEL, BOOL) = (void (*)(id, SEL, BOOL))[webView methodForSelector:inlineSelector];
+        if (setInline != NULL)
+            setInline(webView, inlineSelector, allowsInlinePlayback);
+    }
+    SEL actionSelector = NSSelectorFromString(@"setMediaPlaybackRequiresUserAction:");
+    if ([webView respondsToSelector:actionSelector])
+    {
+        void (*setRequiresAction)(id, SEL, BOOL) = (void (*)(id, SEL, BOOL))[webView methodForSelector:actionSelector];
+        if (setRequiresAction != NULL)
+            setRequiresAction(webView, actionSelector, requiresUserAction);
+    }
+}
+
+BOOL LGPlatformCanSendTextMessage(void)
+{
+    Class composerClass = NSClassFromString(@"MFMessageComposeViewController");
+    if (composerClass != Nil)
+    {
+        SEL selector = NSSelectorFromString(@"canSendText");
+        if (![composerClass respondsToSelector:selector])
+            return NO;
+        BOOL (*function)(id, SEL) = (BOOL (*)(id, SEL))[composerClass methodForSelector:selector];
+        return function != NULL && function(composerClass, selector);
+    }
+
+    UIApplication *application = [UIApplication sharedApplication];
+    NSURL *url = [NSURL URLWithString:@"sms:"];
+    return url != nil && [application canOpenURL:url];
+}
+
+id LGPlatformCreateTextMessageComposer(id delegate, NSArray *recipients, NSString *body)
+{
+    Class composerClass = NSClassFromString(@"MFMessageComposeViewController");
+    if (composerClass == Nil)
+        return nil;
+
+    SEL selector = NSSelectorFromString(@"canSendText");
+    if (![composerClass respondsToSelector:selector])
+        return nil;
+    BOOL (*canSendText)(id, SEL) = (BOOL (*)(id, SEL))[composerClass methodForSelector:selector];
+    if (canSendText == NULL || !canSendText(composerClass, selector))
+        return nil;
+
+    id composer = [[composerClass alloc] init];
+    if (composer == nil)
+        return nil;
+
+    LGPlatformSetObjectProperty(composer, @"setRecipients:", recipients);
+    LGPlatformSetObjectProperty(composer, @"setMessageComposeDelegate:", delegate);
+    LGPlatformSetObjectProperty(composer, @"setBody:", body);
+    return composer;
+}
+
+NSArray *LGPlatformTextMessageComposerRecipients(id composer)
+{
+    id value = LGPlatformObjectProperty(composer, @"recipients");
+    return [value isKindOfClass:[NSArray class]] ? value : nil;
+}
+
+NSString *LGPlatformTextMessageComposerBody(id composer)
+{
+    id value = LGPlatformObjectProperty(composer, @"body");
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+BOOL LGPlatformOpenTextMessage(NSArray *recipients)
+{
+    UIApplication *application = [UIApplication sharedApplication];
+    NSString *urlString = @"sms:";
+    if (recipients.count == 1)
+    {
+        id value = [recipients objectAtIndex:0];
+        if ([value isKindOfClass:[NSString class]] && [value length] != 0)
+        {
+            NSString *escaped = [value stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+            if (escaped.length != 0)
+                urlString = [urlString stringByAppendingString:escaped];
+        }
+    }
+
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (url == nil || ![application canOpenURL:url])
+        return NO;
+    return [application openURL:url];
+}
+
+id LGPlatformCreateLocalNotification(void)
+{
+    Class notificationClass = NSClassFromString(@"UILocalNotification");
+    return notificationClass == Nil ? nil : [[notificationClass alloc] init];
+}
+
+id LGPlatformLocalNotificationFromLaunchOptions(NSDictionary *launchOptions)
+{
+    if (launchOptions == nil)
+        return nil;
+    NSString *key = LGPlatformStringConstant("UIApplicationLaunchOptionsLocalNotificationKey", @"UIApplicationLaunchOptionsLocalNotificationKey");
+    return [launchOptions objectForKey:key];
+}
+
+NSDictionary *LGPlatformLocalNotificationUserInfo(id notification)
+{
+    id value = LGPlatformObjectProperty(notification, @"userInfo");
+    return [value isKindOfClass:[NSDictionary class]] ? value : nil;
+}
+
+NSString *LGPlatformLocalNotificationSoundName(id notification)
+{
+    id value = LGPlatformObjectProperty(notification, @"soundName");
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+void LGPlatformSetLocalNotificationFireDate(id notification, NSDate *fireDate)
+{
+    LGPlatformSetObjectProperty(notification, @"setFireDate:", fireDate);
+}
+
+void LGPlatformSetLocalNotificationAlertBody(id notification, NSString *alertBody)
+{
+    LGPlatformSetObjectProperty(notification, @"setAlertBody:", alertBody);
+}
+
+void LGPlatformSetLocalNotificationSoundName(id notification, NSString *soundName)
+{
+    LGPlatformSetObjectProperty(notification, @"setSoundName:", soundName);
+}
+
+void LGPlatformSetLocalNotificationUserInfo(id notification, NSDictionary *userInfo)
+{
+    LGPlatformSetObjectProperty(notification, @"setUserInfo:", userInfo);
+}
+
+void LGPlatformSetLocalNotificationCategory(id notification, NSString *category)
+{
+    LGPlatformSetObjectProperty(notification, @"setCategory:", category);
+}
+
+void LGPlatformSetLocalNotificationAlertTitle(id notification, NSString *alertTitle)
+{
+    LGPlatformSetObjectProperty(notification, @"setAlertTitle:", alertTitle);
+}
+
+NSString *LGPlatformDefaultLocalNotificationSoundName(void)
+{
+    return LGPlatformStringConstant("UILocalNotificationDefaultSoundName", @"default");
+}
+
+id LGPlatformCreateUserNotificationAction(NSString *identifier, NSString *title, BOOL destructive, BOOL authenticationRequired, BOOL foreground, BOOL textInput)
+{
+    Class actionClass = NSClassFromString(@"UIMutableUserNotificationAction");
+    if (actionClass == Nil || identifier == nil)
+        return nil;
+    id action = [[actionClass alloc] init];
+    [action setValue:identifier forKey:@"identifier"];
+    [action setValue:title forKey:@"title"];
+    [action setValue:[NSNumber numberWithBool:destructive] forKey:@"destructive"];
+    [action setValue:[NSNumber numberWithBool:authenticationRequired] forKey:@"authenticationRequired"];
+    [action setValue:[NSNumber numberWithUnsignedInteger:foreground ? 0 : 1] forKey:@"activationMode"];
+    if (textInput && [action respondsToSelector:NSSelectorFromString(@"setBehavior:")])
+        [action setValue:[NSNumber numberWithUnsignedInteger:1] forKey:@"behavior"];
+    return action;
+}
+
+id LGPlatformCreateUserNotificationCategory(NSString *identifier, NSArray *defaultActions, NSArray *minimalActions)
+{
+    Class categoryClass = NSClassFromString(@"UIMutableUserNotificationCategory");
+    if (categoryClass == Nil || identifier == nil)
+        return nil;
+    id category = [[categoryClass alloc] init];
+    [category setValue:identifier forKey:@"identifier"];
+    SEL selector = NSSelectorFromString(@"setActions:forContext:");
+    void (*function)(id, SEL, NSArray *, NSUInteger) = (void (*)(id, SEL, NSArray *, NSUInteger))[category methodForSelector:selector];
+    if (function == NULL)
+        return category;
+    if (defaultActions != nil)
+        function(category, selector, defaultActions, 0);
+    if (minimalActions != nil)
+        function(category, selector, minimalActions, 1);
+    return category;
+}
+
+BOOL LGPlatformUserNotificationSettingsSupported(UIApplication *application)
+{
+    return application != nil && NSClassFromString(@"UIUserNotificationSettings") != Nil && [application respondsToSelector:NSSelectorFromString(@"registerUserNotificationSettings:")];
+}
+
+BOOL LGPlatformRegisterUserNotificationSettings(UIApplication *application, NSArray *categories)
+{
+    if (!LGPlatformUserNotificationSettingsSupported(application))
+        return NO;
+    Class settingsClass = NSClassFromString(@"UIUserNotificationSettings");
+    SEL settingsSelector = NSSelectorFromString(@"settingsForTypes:categories:");
+    id (*settingsFunction)(id, SEL, NSUInteger, NSSet *) = (id (*)(id, SEL, NSUInteger, NSSet *))[settingsClass methodForSelector:settingsSelector];
+    if (settingsFunction == NULL)
+        return NO;
+    NSUInteger types = (1 << 0) | (1 << 1) | (1 << 2);
+    id settings = settingsFunction(settingsClass, settingsSelector, types, categories.count == 0 ? nil : [NSSet setWithArray:categories]);
+    if (settings == nil)
+        return NO;
+    SEL registerSelector = NSSelectorFromString(@"registerUserNotificationSettings:");
+    void (*registerFunction)(id, SEL, id) = (void (*)(id, SEL, id))[application methodForSelector:registerSelector];
+    if (registerFunction == NULL)
+        return NO;
+    registerFunction(application, registerSelector, settings);
+    return YES;
+}
+
+void LGPlatformPresentLocalNotificationNow(UIApplication *application, id notification)
+{
+    if (application == nil || notification == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"presentLocalNotificationNow:");
+    if (![application respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, id) = (void (*)(id, SEL, id))[application methodForSelector:selector];
+    if (function != NULL)
+        function(application, selector, notification);
+}
+
+BOOL LGPlatformSetBackgroundFetchEnabled(UIApplication *application, BOOL enabled)
+{
+    if (application == nil)
+        return NO;
+    SEL selector = NSSelectorFromString(@"setMinimumBackgroundFetchInterval:");
+    if (![application respondsToSelector:selector])
+        return NO;
+    void (*function)(id, SEL, NSTimeInterval) = (void (*)(id, SEL, NSTimeInterval))[application methodForSelector:selector];
+    if (function == NULL)
+        return NO;
+    function(application, selector, enabled ? 0.0 : DBL_MAX);
+    return YES;
+}
+
+void LGPlatformScheduleLocalNotification(UIApplication *application, id notification)
+{
+    if (application == nil || notification == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"scheduleLocalNotification:");
+    if (![application respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, id) = (void (*)(id, SEL, id))[application methodForSelector:selector];
+    if (function != NULL)
+        function(application, selector, notification);
+}
+
+void LGPlatformCancelLocalNotification(UIApplication *application, id notification)
+{
+    if (application == nil || notification == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"cancelLocalNotification:");
+    if (![application respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, id) = (void (*)(id, SEL, id))[application methodForSelector:selector];
+    if (function != NULL)
+        function(application, selector, notification);
+}
+
+NSArray *LGPlatformScheduledLocalNotifications(UIApplication *application)
+{
+    if (application == nil)
+        return nil;
+    id notifications = LGPlatformObjectProperty(application, @"scheduledLocalNotifications");
+    return [notifications isKindOfClass:[NSArray class]] ? notifications : nil;
+}
+
+void LGPlatformApplyLegacySegmentedControlStyle(UISegmentedControl *control, UIColor *tintColor)
+{
+    if (control == nil)
+        return;
+
+    SEL styleSelector = NSSelectorFromString(@"setSegmentedControlStyle:");
+    if ([control respondsToSelector:styleSelector])
+    {
+        void (*setStyle)(id, SEL, NSInteger) = (void (*)(id, SEL, NSInteger))[control methodForSelector:styleSelector];
+        if (setStyle != NULL)
+            setStyle(control, styleSelector, UISegmentedControlStyleBar);
+    }
+
+    SEL tintSelector = NSSelectorFromString(@"setTintColor:");
+    if (tintColor != nil && [control respondsToSelector:tintSelector])
+    {
+        void (*setTint)(id, SEL, id) = (void (*)(id, SEL, id))[control methodForSelector:tintSelector];
+        if (setTint != NULL)
+            setTint(control, tintSelector, tintColor);
+    }
+}
+
+void LGPlatformSetSegmentedControlBackgroundImage(UISegmentedControl *control, UIImage *image, UIControlState state, UIBarMetrics barMetrics)
+{
+    if (control == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"setBackgroundImage:forState:barMetrics:");
+    if ([control respondsToSelector:selector])
+    {
+        void (*function)(id, SEL, id, UIControlState, UIBarMetrics) = (void (*)(id, SEL, id, UIControlState, UIBarMetrics))[control methodForSelector:selector];
+        if (function != NULL)
+        {
+            function(control, selector, image, state, barMetrics);
+            return;
+        }
+    }
+    if (state == UIControlStateNormal)
+        LGPlatformApplyLegacySegmentedControlStyle(control, nil);
+}
+
+void LGPlatformSetSegmentedControlDividerImage(UISegmentedControl *control, UIImage *image, UIControlState leftState, UIControlState rightState, UIBarMetrics barMetrics)
+{
+    if (control == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"setDividerImage:forLeftSegmentState:rightSegmentState:barMetrics:");
+    if (![control respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, id, UIControlState, UIControlState, UIBarMetrics) = (void (*)(id, SEL, id, UIControlState, UIControlState, UIBarMetrics))[control methodForSelector:selector];
+    if (function != NULL)
+        function(control, selector, image, leftState, rightState, barMetrics);
+}
+
+void LGPlatformSetSegmentedControlTitleTextAttributes(UISegmentedControl *control, NSDictionary *attributes, UIControlState state)
+{
+    if (control == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"setTitleTextAttributes:forState:");
+    if ([control respondsToSelector:selector])
+    {
+        void (*function)(id, SEL, id, UIControlState) = (void (*)(id, SEL, id, UIControlState))[control methodForSelector:selector];
+        if (function != NULL)
+        {
+            function(control, selector, attributes, state);
+            return;
+        }
+    }
+    if (state == UIControlStateNormal)
+    {
+        NSString *colorKey = LGPlatformStringConstant("UITextAttributeTextColor", @"UITextAttributeTextColor");
+        UIColor *color = [attributes objectForKey:colorKey];
+        if ([color isKindOfClass:[UIColor class]])
+            LGPlatformApplyLegacySegmentedControlStyle(control, color);
+    }
+}
+
+
+void LGPlatformPresentActionSheet(UIActionSheet *actionSheet, UIBarButtonItem *barButtonItem, UIView *sourceView, CGRect sourceRect, UIView *fallbackView, BOOL animated)
+{
+    if (actionSheet == nil)
+        return;
+
+    if (barButtonItem != nil)
+    {
+        SEL selector = NSSelectorFromString(@"showFromBarButtonItem:animated:");
+        if ([actionSheet respondsToSelector:selector])
+        {
+            void (*function)(id, SEL, id, BOOL) = (void (*)(id, SEL, id, BOOL))[actionSheet methodForSelector:selector];
+            if (function != NULL)
+            {
+                function(actionSheet, selector, barButtonItem, animated);
+                return;
+            }
+        }
+    }
+
+    if (sourceView != nil)
+    {
+        SEL selector = NSSelectorFromString(@"showFromRect:inView:animated:");
+        if ([actionSheet respondsToSelector:selector])
+        {
+            void (*function)(id, SEL, CGRect, id, BOOL) = (void (*)(id, SEL, CGRect, id, BOOL))[actionSheet methodForSelector:selector];
+            if (function != NULL)
+            {
+                function(actionSheet, selector, sourceRect, sourceView, animated);
+                return;
+            }
+        }
+    }
+
+    UIView *view = fallbackView != nil ? fallbackView : sourceView;
+    if (view != nil)
+        [actionSheet showInView:view];
+}
+
+void LGPlatformSetPopoverBackgroundColor(id popoverController, UIColor *color)
+{
+    if (popoverController == nil || color == nil)
+        return;
+    SEL selector = NSSelectorFromString(@"setBackgroundColor:");
+    if (![popoverController respondsToSelector:selector])
+        return;
+    void (*function)(id, SEL, id) = (void (*)(id, SEL, id))[popoverController methodForSelector:selector];
+    if (function != NULL)
+        function(popoverController, selector, color);
+}
+
+
+static BOOL LGPlatformViewIsDescendantOfView(UIView *view, UIView *ancestor)
+{
+    if (view == nil || ancestor == nil)
+        return NO;
+    UIView *current = view;
+    while (current != nil)
+    {
+        if (current == ancestor)
+            return YES;
+        current = current.superview;
+    }
+    return NO;
+}
+
+static BOOL LGPlatformViewHasControlAncestor(UIView *view, UIView *rootView)
+{
+    UIView *current = view.superview;
+    while (current != nil && current != rootView)
+    {
+        if ([current isKindOfClass:[UIControl class]])
+            return YES;
+        current = current.superview;
+    }
+    return NO;
+}
+
+static void LGPlatformApplyNavigationBarTitleStyleToSubviews(UINavigationBar *navigationBar, UIView *view, UIView *customTitleView, UIColor *textColor, UIColor *shadowColor, CGSize shadowOffset, UIFont *font)
+{
+    for (UIView *subview in view.subviews)
+    {
+        if ([subview isKindOfClass:[UILabel class]] && !LGPlatformViewHasControlAncestor(subview, navigationBar) && !LGPlatformViewIsDescendantOfView(subview, customTitleView))
+        {
+            CGRect frame = [subview convertRect:subview.bounds toView:navigationBar];
+            CGFloat centerX = CGRectGetMidX(frame);
+            CGFloat navigationCenterX = CGRectGetMidX(navigationBar.bounds);
+            CGFloat deltaX = centerX - navigationCenterX;
+            if (deltaX < 0.0f)
+                deltaX = -deltaX;
+            if (deltaX <= navigationBar.bounds.size.width * 0.30f)
+            {
+                UILabel *label = (UILabel *)subview;
+                if (font != nil)
+                    label.font = font;
+                if (textColor != nil)
+                    label.textColor = textColor;
+                label.shadowColor = shadowColor;
+                label.shadowOffset = shadowOffset;
+            }
+        }
+        LGPlatformApplyNavigationBarTitleStyleToSubviews(navigationBar, subview, customTitleView, textColor, shadowColor, shadowOffset, font);
+    }
+}
+
+void LGPlatformApplyNavigationBarTitleStyle(UINavigationBar *navigationBar, UIColor *textColor, UIColor *shadowColor, CGSize shadowOffset, UIFont *font)
+{
+    if (navigationBar == nil)
+        return;
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 50000
+    SEL selector = NSSelectorFromString(@"setTitleTextAttributes:");
+    if ([navigationBar respondsToSelector:selector])
+    {
+        NSMutableDictionary *attributes = [[NSMutableDictionary alloc] init];
+        if (textColor != nil)
+            [attributes setObject:textColor forKey:UITextAttributeTextColor];
+        if (shadowColor != nil)
+            [attributes setObject:shadowColor forKey:UITextAttributeTextShadowColor];
+        [attributes setObject:[NSValue valueWithUIOffset:UIOffsetMake(shadowOffset.width, shadowOffset.height)] forKey:UITextAttributeTextShadowOffset];
+        if (font != nil)
+            [attributes setObject:font forKey:UITextAttributeFont];
+        void (*function)(id, SEL, id) = (void (*)(id, SEL, id))[navigationBar methodForSelector:selector];
+        if (function != NULL)
+        {
+            function(navigationBar, selector, attributes);
+            return;
+        }
+    }
+#endif
+
+    UIView *customTitleView = navigationBar.topItem.titleView;
+    LGPlatformApplyNavigationBarTitleStyleToSubviews(navigationBar, navigationBar, customTitleView, textColor, shadowColor, shadowOffset, font);
+}

@@ -1,0 +1,2684 @@
+#import "TGSynchronizeContactsActor.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/ActionStage.h"
+#import "../submodules/LegacyComponents/LegacyComponents/SGraphObjectNode.h"
+
+#import "TGTelegraph.h"
+
+#import <AddressBook/AddressBook.h>
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 60000
+typedef void (^ABAddressBookRequestAccessCompletionHandler)(bool granted, CFErrorRef error);
+#endif
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 50000
+#define TGABPersonPhoneOtherFAXLabel CFSTR("_$!<Other Fax>!$_")
+#else
+#define TGABPersonPhoneOtherFAXLabel kABPersonPhoneOtherFAXLabel
+#endif
+
+#import "TGDatabase.h"
+#import "TGCommon.h"
+
+#import "TGContactListRequestBuilder.h"
+#import "TGUserDataRequestBuilder.h"
+
+#import "TGAppDelegate.h"
+
+#import "TGUser+Telegraph.h"
+#import "TGVCard.h"
+
+#import "TGAlertView.h"
+
+#include <set>
+#include <algorithm>
+
+#import <CommonCrypto/CommonDigest.h>
+#import "../LightGramPlatform/LGPlatformAddressBook.h"
+
+#if TARGET_IPHONE_SIMULATOR
+
+@interface TGRequestAddressBookAccessWithCompletionProxy : NSObject <UIAlertViewDelegate>
+
+@property (nonatomic, copy) void (^completion)(bool granted);
+
+@end
+
+@implementation TGRequestAddressBookAccessWithCompletionProxy
+
+@synthesize completion = _completion;
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex
+{
+    if (buttonIndex == alertView.cancelButtonIndex)
+    {
+        if (_completion)
+            _completion(false);
+    }
+    else
+    {
+        if (_completion)
+            _completion(true);
+    }
+}
+
+@end
+
+void TGRequestAddressBookAccessWithCompletion(__unused ABAddressBookRef addressBook, ABAddressBookRequestAccessCompletionHandler completion)
+{
+    if (true && iosMajorVersion() >= 7)
+    {
+#if TARGET_IPHONE_SIMULATOR && false
+        dispatch_async(dispatch_get_main_queue(), ^
+        {
+            completion(false, NULL);
+        });
+#else
+        ABAddressBookRequestAccessWithCompletion(addressBook, completion);
+#endif
+    }
+    else
+    {
+        static int forceResult = 1;
+        
+        static bool alreadyRequested = false;
+        static bool cachedGranted = false;
+        if (!alreadyRequested)
+        {
+            alreadyRequested = true;
+            
+            dispatch_async(dispatch_get_main_queue(), ^
+            {
+                static TGRequestAddressBookAccessWithCompletionProxy *proxy = [[TGRequestAddressBookAccessWithCompletionProxy alloc] init];
+                proxy.completion = ^(bool granted)
+                {
+                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^
+                    {
+                        cachedGranted = granted;
+                        completion(granted, NULL);
+                    });
+                };
+                
+                if (forceResult != 0)
+                {
+                    proxy.completion(forceResult == 1);
+                }
+                else
+                {
+                    TGAlertView *alertView = [[TGAlertView alloc] initWithTitle:nil message:@"Enable phonebook access?" delegate:proxy cancelButtonTitle:@"No" otherButtonTitles:@"Yes", nil];
+                    [alertView show];
+                }
+            });
+        }
+        else
+        {
+            completion(cachedGranted, NULL);
+        }
+    }
+}
+
+#else
+
+static void TGRequestAddressBookAccessWithCompletion(ABAddressBookRef addressBook, ABAddressBookRequestAccessCompletionHandler completion)
+{
+    LGPlatformAddressBookRequestAccess(addressBook, completion);
+}
+
+#endif
+
+static NSDictionary *localizedPhoneLabelToNativeLabel()
+{
+    static NSDictionary *dict = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        NSMutableDictionary *labelMap = [[NSMutableDictionary alloc] init];
+        
+        [labelMap setObject:(__bridge NSString *)kABPersonPhoneMobileLabel forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneMobileLabel)];
+        [labelMap setObject:(__bridge NSString *)kABPersonPhoneIPhoneLabel forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneIPhoneLabel)];
+        [labelMap setObject:@"_$!<Home>!$_" forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(CFSTR("_$!<Home>!$_"))];
+        [labelMap setObject:@"_$!<Work>!$_" forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(CFSTR("_$!<Work>!$_"))];
+        [labelMap setObject:(__bridge NSString *)kABPersonPhoneMainLabel forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneMainLabel)];
+        [labelMap setObject:(__bridge NSString *)kABPersonPhoneHomeFAXLabel forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneHomeFAXLabel)];
+        [labelMap setObject:(__bridge NSString *)kABPersonPhoneWorkFAXLabel forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneWorkFAXLabel)];
+        if (TGABPersonPhoneOtherFAXLabel != NULL)
+        {
+            [labelMap setObject:(__bridge NSString *)TGABPersonPhoneOtherFAXLabel forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(TGABPersonPhoneOtherFAXLabel)];
+        }
+        [labelMap setObject:(__bridge NSString *)kABPersonPhonePagerLabel forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhonePagerLabel)];
+        [labelMap setObject:@"_$!<Other>!$_" forKey:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(CFSTR("_$!<Other>!$_"))];
+        
+        dict = labelMap;
+    });
+    
+    return dict;
+}
+
+static NSString *nativePhoneLabelForString(NSString *string)
+{
+    if (string == nil)
+        return @"";
+    NSString *nativeLabel = [localizedPhoneLabelToNativeLabel() objectForKey:string];
+    if (nativeLabel != nil)
+        return nativeLabel;
+    return string;
+}
+
+static NSString *localizedMobilePhoneLabel()
+{
+    static NSString *label = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        label = (__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneMobileLabel);
+    });
+    return label;
+}
+
+@class TGSynchronizeContactsManager;
+static TGSynchronizeContactsManager *TGSynchronizeContactsManagerInstance = nil;
+
+static const char *addressBookQueueSpecific = "addressBookQueue";
+
+static std::map<int, int> &lastPersonModificationDates = *new std::map<int, int>();
+
+typedef void (^TGAddressBookCreated)(ABAddressBookRef addressBook, bool denied);
+
+@interface TGSynchronizeContactsManager ()
+{
+    volatile bool _localSynchronizationPending;
+    TG_SYNCHRONIZED_DEFINE(_localSynchronizationPending);
+    
+    std::set<int64_t> _contactPhoneAdditionPending;
+    TG_SYNCHRONIZED_DEFINE(_contactPhoneAdditionPending);
+
+    bool _startupLocalSynchronizationPending;
+    NSMutableArray *_startupLocalSynchronizationWaiters;
+}
+
+@property (nonatomic) bool firstTimeSync;
+
+@end
+
+static int64_t hashForContactIds(int32_t nonRegisteredCount, std::vector<int64_t> const &contactIds) {
+    int64_t acc = TGApiHashCombine(0, nonRegisteredCount);
+    for (auto it : contactIds) {
+        acc = TGApiHashCombine(acc, it);
+    }
+    return acc;
+}
+
+static NSData *TGAddressBookFingerprint(CFArrayRef people)
+{
+    uint64_t hash = 1469598103934665603ULL;
+    CFIndex count = people == NULL ? 0 : CFArrayGetCount(people);
+    for (CFIndex i = 0; i < count; i++)
+    {
+        ABRecordRef person = CFArrayGetValueAtIndex(people, i);
+        int32_t nativeId = ABRecordGetRecordID(person);
+        const uint8_t *nativeIdBytes = (const uint8_t *)&nativeId;
+        for (NSUInteger j = 0; j < sizeof(nativeId); j++)
+        {
+            hash ^= nativeIdBytes[j];
+            hash *= 1099511628211ULL;
+        }
+
+        CFDateRef modificationDate = (CFDateRef)ABRecordCopyValue(person, kABPersonModificationDateProperty);
+        CFAbsoluteTime modificationTime = modificationDate == NULL ? 0.0 : CFDateGetAbsoluteTime(modificationDate);
+        if (modificationDate != NULL)
+            CFRelease(modificationDate);
+        const uint8_t *modificationBytes = (const uint8_t *)&modificationTime;
+        for (NSUInteger j = 0; j < sizeof(modificationTime); j++)
+        {
+            hash ^= modificationBytes[j];
+            hash *= 1099511628211ULL;
+        }
+    }
+    hash ^= (uint64_t)count;
+    hash *= 1099511628211ULL;
+    return [NSData dataWithBytes:&hash length:sizeof(hash)];
+}
+
+static NSString *const TGAddressBookDuplicateCleanupProperty = @"addressBookImportedDuplicatesRemoved";
+
+static NSString *TGAddressBookCopyStringValue(ABRecordRef person, ABPropertyID property)
+{
+    NSString *value = (__bridge_transfer NSString *)ABRecordCopyValue(person, property);
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+static bool TGAddressBookMultiValueIsEmpty(ABRecordRef person, ABPropertyID property)
+{
+    ABMultiValueRef values = ABRecordCopyValue(person, property);
+    if (values == NULL)
+        return true;
+    bool empty = ABMultiValueGetCount(values) == 0;
+    CFRelease(values);
+    return empty;
+}
+
+static bool TGAddressBookPersonHasOnlyImportedFields(ABRecordRef person)
+{
+    if (TGAddressBookCopyStringValue(person, kABPersonOrganizationProperty).length != 0)
+        return false;
+    if (TGAddressBookCopyStringValue(person, kABPersonNoteProperty).length != 0)
+        return false;
+    if (TGAddressBookCopyStringValue(person, kABPersonNicknameProperty).length != 0)
+        return false;
+    if (!TGAddressBookMultiValueIsEmpty(person, kABPersonEmailProperty))
+        return false;
+    if (!TGAddressBookMultiValueIsEmpty(person, kABPersonAddressProperty))
+        return false;
+    if (!TGAddressBookMultiValueIsEmpty(person, kABPersonURLProperty))
+        return false;
+    if (ABPersonHasImageData(person))
+        return false;
+    return true;
+}
+
+static void TGRemoveImportedAddressBookDuplicates(ABAddressBookRef addressBook)
+{
+    if ([TGDatabaseInstance() customProperty:TGAddressBookDuplicateCleanupProperty].length != 0)
+        return;
+
+    std::set<int> telegramPhoneIds;
+    for (TGUser *user in [TGDatabaseInstance() loadContactUsers])
+    {
+        if (user.contactId != 0)
+            telegramPhoneIds.insert(user.contactId);
+    }
+
+    CFArrayRef people = ABAddressBookCopyArrayOfAllPeople(addressBook);
+    CFIndex count = people == NULL ? 0 : CFArrayGetCount(people);
+    NSMutableSet *keptKeys = [[NSMutableSet alloc] init];
+    std::vector<CFIndex> duplicateIndices;
+
+    for (CFIndex i = 0; i < count; i++)
+    {
+        ABRecordRef person = CFArrayGetValueAtIndex(people, i);
+        ABMultiValueRef phones = ABRecordCopyValue(person, kABPersonPhoneProperty);
+        if (phones == NULL)
+            continue;
+        NSString *number = nil;
+        if (ABMultiValueGetCount(phones) == 1)
+            number = (__bridge_transfer NSString *)ABMultiValueCopyValueAtIndex(phones, 0);
+        CFRelease(phones);
+
+        NSString *cleanNumber = number == nil ? nil : [TGPhoneUtils cleanPhone:number];
+        if (cleanNumber.length == 0 || telegramPhoneIds.find(phoneMatchHash(cleanNumber)) == telegramPhoneIds.end())
+            continue;
+
+        NSString *firstName = TGAddressBookCopyStringValue(person, kABPersonFirstNameProperty) ?: @"";
+        NSString *lastName = TGAddressBookCopyStringValue(person, kABPersonLastNameProperty) ?: @"";
+        NSString *key = [[NSString alloc] initWithFormat:@"%@\n%@\n%@", firstName, lastName, cleanNumber];
+
+        if (!TGAddressBookPersonHasOnlyImportedFields(person))
+        {
+            [keptKeys addObject:key];
+            continue;
+        }
+
+        if ([keptKeys containsObject:key])
+            duplicateIndices.push_back(i);
+        else
+            [keptKeys addObject:key];
+    }
+
+    bool completed = true;
+    if (!duplicateIndices.empty())
+    {
+        for (std::vector<CFIndex>::const_iterator it = duplicateIndices.begin(); it != duplicateIndices.end(); ++it)
+        {
+            CFErrorRef removeError = NULL;
+            ABAddressBookRemoveRecord(addressBook, CFArrayGetValueAtIndex(people, *it), &removeError);
+            if (removeError != NULL)
+                CFRelease(removeError);
+        }
+
+        CFErrorRef saveError = NULL;
+        completed = ABAddressBookSave(addressBook, &saveError);
+        if (saveError != NULL)
+        {
+            CFStringRef errorDescription = CFErrorCopyDescription(saveError);
+            CFRelease(errorDescription);
+            CFRelease(saveError);
+        }
+        if (!completed)
+            ABAddressBookRevert(addressBook);
+    }
+
+    if (people != NULL)
+        CFRelease(people);
+
+    if (completed)
+    {
+        uint8_t flag = 1;
+        [TGDatabaseInstance() setCustomProperty:TGAddressBookDuplicateCleanupProperty value:[NSData dataWithBytes:&flag length:1]];
+    }
+}
+
+static NSString *const TGAddressBookSnapshotProperty = @"addressBookSnapshot";
+
+static NSData *TGAddressBookSnapshotData(NSData *fingerprint, NSArray *contactBindings, NSArray *phonebookContacts)
+{
+    if (fingerprint.length == 0)
+        return nil;
+
+    NSMutableArray *bindingItems = [[NSMutableArray alloc] initWithCapacity:contactBindings.count];
+    for (TGContactBinding *binding in contactBindings)
+    {
+        [bindingItems addObject:@[[NSNumber numberWithInt:binding.phoneId], binding.firstName ?: @"", binding.lastName ?: @"", binding.phoneNumber ?: @""]];
+    }
+
+    NSMutableArray *contactItems = [[NSMutableArray alloc] initWithCapacity:phonebookContacts.count];
+    for (TGPhonebookContact *contact in phonebookContacts)
+    {
+        NSMutableArray *phoneItems = [[NSMutableArray alloc] initWithCapacity:contact.phoneNumbers.count];
+        for (TGPhoneNumber *phoneNumber in contact.phoneNumbers)
+        {
+            if (phoneNumber.label != nil)
+                [phoneItems addObject:@[phoneNumber.number ?: @"", phoneNumber.label]];
+            else
+                [phoneItems addObject:@[phoneNumber.number ?: @""]];
+        }
+        [contactItems addObject:@[[NSNumber numberWithInt:contact.nativeId], contact.firstName ?: @"", contact.lastName ?: @"", phoneItems]];
+    }
+
+    NSDictionary *snapshot = @{@"fingerprint": fingerprint, @"bindings": bindingItems, @"contacts": contactItems};
+    return [NSPropertyListSerialization dataFromPropertyList:snapshot format:NSPropertyListBinaryFormat_v1_0 errorDescription:NULL];
+}
+
+static void TGStoreAddressBookSnapshot(NSData *fingerprint, NSArray *contactBindings, NSArray *phonebookContacts)
+{
+    [TGDatabaseInstance() setCustomProperty:TGAddressBookSnapshotProperty value:TGAddressBookSnapshotData(fingerprint, contactBindings, phonebookContacts)];
+}
+
+static bool TGRestoreAddressBookSnapshot(NSData *fingerprint)
+{
+    NSData *data = [TGDatabaseInstance() customProperty:TGAddressBookSnapshotProperty];
+    if (data.length == 0 || fingerprint.length == 0)
+        return false;
+
+    NSDictionary *snapshot = [NSPropertyListSerialization propertyListFromData:data mutabilityOption:NSPropertyListImmutable format:NULL errorDescription:NULL];
+    if (![snapshot isKindOfClass:[NSDictionary class]])
+        return false;
+
+    NSData *storedFingerprint = snapshot[@"fingerprint"];
+    NSArray *bindingItems = snapshot[@"bindings"];
+    NSArray *contactItems = snapshot[@"contacts"];
+    if (![storedFingerprint isKindOfClass:[NSData class]] || ![storedFingerprint isEqualToData:fingerprint] || ![bindingItems isKindOfClass:[NSArray class]] || ![contactItems isKindOfClass:[NSArray class]])
+        return false;
+
+    NSMutableArray *contactBindings = [[NSMutableArray alloc] initWithCapacity:bindingItems.count];
+    for (NSArray *item in bindingItems)
+    {
+        if (![item isKindOfClass:[NSArray class]] || item.count != 4)
+            return false;
+        TGContactBinding *binding = [[TGContactBinding alloc] init];
+        binding.phoneId = [item[0] intValue];
+        binding.firstName = item[1];
+        binding.lastName = item[2];
+        binding.phoneNumber = item[3];
+        [contactBindings addObject:binding];
+    }
+
+    NSMutableArray *phonebookContacts = [[NSMutableArray alloc] initWithCapacity:contactItems.count];
+    for (NSArray *item in contactItems)
+    {
+        if (![item isKindOfClass:[NSArray class]] || item.count != 4 || ![item[3] isKindOfClass:[NSArray class]])
+            return false;
+        NSArray *phoneItems = item[3];
+        NSMutableArray *phoneNumbers = [[NSMutableArray alloc] initWithCapacity:phoneItems.count];
+        for (NSArray *phoneItem in phoneItems)
+        {
+            if (![phoneItem isKindOfClass:[NSArray class]] || phoneItem.count == 0 || phoneItem.count > 2)
+                return false;
+            [phoneNumbers addObject:[[TGPhoneNumber alloc] initWithLabel:phoneItem.count == 2 ? phoneItem[1] : nil number:phoneItem[0]]];
+        }
+        TGPhonebookContact *contact = [[TGPhonebookContact alloc] init];
+        contact.nativeId = [item[0] intValue];
+        contact.firstName = item[1];
+        contact.lastName = item[2];
+        contact.phoneNumbers = phoneNumbers;
+        [phonebookContacts addObject:contact];
+    }
+
+    [TGDatabaseInstance() replaceContactBindings:contactBindings];
+    [TGDatabaseInstance() replacePhonebookContacts:phonebookContacts];
+    return true;
+}
+
+@implementation TGSynchronizeContactsManager
+
+static void TGAddressBookChanged(__unused ABAddressBookRef addressBook, __unused CFDictionaryRef info, __unused void *context)
+{
+    [[TGSynchronizeContactsManager instance] addressBookChanged];
+}
+
+static void CreateAddressBookAsync(TGAddressBookCreated createdBlock)
+{
+    static volatile bool singletonInitialized = false;
+    
+    static ABAddressBookRef singleton = NULL;
+    static bool singletonDenied = false;
+    
+    static NSMutableArray *resultListeners = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {   
+        resultListeners = [[NSMutableArray alloc] init];
+    });
+    
+    [[TGSynchronizeContactsManager instance] dispatchOnAddressBookQueue:^
+    {
+        if (singletonInitialized)
+        {
+            if (singleton != NULL)
+                ABAddressBookRevert(singleton);
+            
+            createdBlock(singleton, singletonDenied);
+            
+            return;
+        }
+        else
+        {
+            [resultListeners addObject:createdBlock];
+            
+            static dispatch_once_t onceToken;
+            dispatch_once(&onceToken, ^
+            {
+                [[TGSynchronizeContactsManager instance] dispatchOnAddressBookQueue:^
+                {
+                    CFErrorRef createError = NULL;
+                    ABAddressBookRef addressBook = LGPlatformAddressBookCreate(&createError);
+                    if (createError != NULL)
+                    {
+                        TGLog(@"CONTACT addressbook create error=%@", (__bridge NSError *)createError);
+                        CFRelease(createError);
+                    }
+                    TGRequestAddressBookAccessWithCompletion(addressBook, ^(bool granted, CFErrorRef error)
+                    {
+                        [[TGSynchronizeContactsManager instance] dispatchOnAddressBookQueue:^
+                        {
+                            TGLog(@"CONTACT addressbook access granted=%d error=%d", granted ? 1 : 0, error != NULL ? 1 : 0);
+                            NSMutableArray *listeners = [[NSMutableArray alloc] init];
+                            [listeners addObjectsFromArray:resultListeners];
+                            [resultListeners removeAllObjects];
+                            
+                            if (error != NULL || (granted && addressBook == NULL))
+                            {
+                                [TGSynchronizeContactsManager instance].phonebookAccessStatus = TGPhonebookAccessStatusUnknown;
+                                
+                                for (TGAddressBookCreated listener in listeners)
+                                    listener(NULL, false);
+                            }
+                            else if (!granted)
+                            {
+                                [TGSynchronizeContactsManager instance].phonebookAccessStatus = TGPhonebookAccessStatusDisabled;
+                                
+                                singletonInitialized = true;
+                                singletonDenied = true;
+                                singleton = NULL;
+                                
+                                for (TGAddressBookCreated listener in listeners)
+                                    listener(NULL, true);
+                            }
+                            else
+                            {
+                                [TGSynchronizeContactsManager instance].phonebookAccessStatus = TGPhonebookAccessStatusEnabled;
+                                
+                                [[TGSynchronizeContactsManager instance] updateSortOrder];
+                                
+                                singletonInitialized = true;
+                                singletonDenied = false;
+                                singleton = addressBook;
+
+                                ABAddressBookRevert(singleton);
+                                for (TGAddressBookCreated listener in listeners)
+                                    listener(addressBook, false);
+
+                                dispatch_async(dispatch_get_main_queue(), ^
+                                {
+                                    ABAddressBookRegisterExternalChangeCallback(singleton, &TGAddressBookChanged, NULL);
+                                });
+                            }
+                        }];
+                    });
+                }];
+            });
+        }
+    }];
+}
+
++ (TGSynchronizeContactsManager *)instance
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        TGSynchronizeContactsManagerInstance = [[TGSynchronizeContactsManager alloc] init];
+    });
+    
+    return TGSynchronizeContactsManagerInstance;
+}
+
++ (NSArray *)phoneLabels
+{
+    static NSArray *array = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        NSMutableArray *labels = [[NSMutableArray alloc] init];
+        
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneMobileLabel)];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneIPhoneLabel)];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(CFSTR("_$!<Home>!$_"))];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(CFSTR("_$!<Work>!$_"))];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneMainLabel)];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneHomeFAXLabel)];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhoneWorkFAXLabel)];
+        if (TGABPersonPhoneOtherFAXLabel != NULL)
+            [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(TGABPersonPhoneOtherFAXLabel)];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(kABPersonPhonePagerLabel)];
+        [labels addObject:(__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(CFSTR("_$!<Other>!$_"))];
+        
+        array = labels;
+    });
+    
+    return array;
+}
+
++ (NSArray *)customPhoneLabels
+{
+    return nil;
+}
+
+- (void)clearState
+{
+    _firstTimeSync = true;
+    [self dispatchOnAddressBookQueue:^
+    {
+        lastPersonModificationDates.clear();
+    }];
+    [TGDatabaseInstance() setContactListPreloaded:false];
+    
+    TG_SYNCHRONIZED_BEGIN(_contactPhoneAdditionPending)
+    _contactPhoneAdditionPending.clear();
+    TG_SYNCHRONIZED_END(_contactPhoneAdditionPending)
+}
+
+- (void)scheduleContactPhoneAddition:(int64_t)userId
+{
+    TG_SYNCHRONIZED_BEGIN(_contactPhoneAdditionPending)
+    _contactPhoneAdditionPending.insert(userId);
+    TG_SYNCHRONIZED_END(_contactPhoneAdditionPending)
+}
+
+- (void)clearScheduledContactAddition:(int64_t)userId
+{
+    TG_SYNCHRONIZED_BEGIN(_contactPhoneAdditionPending)
+    _contactPhoneAdditionPending.erase(userId);
+    TG_SYNCHRONIZED_END(_contactPhoneAdditionPending)
+}
+
+- (bool)isContactAdditionScheduled:(int64_t)userId
+{
+    TG_SYNCHRONIZED_BEGIN(_contactPhoneAdditionPending)
+    bool result = _contactPhoneAdditionPending.find(userId) != _contactPhoneAdditionPending.end();
+    TG_SYNCHRONIZED_END(_contactPhoneAdditionPending)
+    return result;
+}
+
+- (void)setContactsSynchronizationStatus:(bool)contactsSynchronizationStatus
+{
+    if (contactsSynchronizationStatus != _contactsSynchronizationStatus)
+    {
+        _contactsSynchronizationStatus = contactsSynchronizationStatus;
+        
+        [ActionStageInstance() dispatchResource:@"/tg/contactListSynchronizationState" resource:[[SGraphObjectNode alloc] initWithObject:[[NSNumber alloc] initWithBool:_contactsSynchronizationStatus]]];
+    }
+}
+
+- (void)setRemoveAndExportActionsRunning:(bool)removeAndExportActionsRunning
+{
+    if (removeAndExportActionsRunning != _removeAndExportActionsRunning)
+    {
+        _removeAndExportActionsRunning = removeAndExportActionsRunning;
+        
+        [ActionStageInstance() dispatchResource:@"/tg/removeAndExportActionsRunning" resource:[[SGraphObjectNode alloc] initWithObject:[[NSNumber alloc] initWithBool:_removeAndExportActionsRunning]]];
+    }
+}
+
+- (void)setPhonebookAccessStatus:(TGPhonebookAccessStatus)phonebookAccessStatus
+{
+    if (_phonebookAccessStatus != phonebookAccessStatus)
+    {
+        _phonebookAccessStatus = phonebookAccessStatus;
+        
+        [ActionStageInstance() dispatchResource:@"/tg/phonebookAccessStatus" resource:nil];
+    }
+}
+
+- (dispatch_queue_t)addressBookQueue
+{
+    static dispatch_queue_t addressBookQueue = NULL;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        addressBookQueue = dispatch_queue_create("ph.telegra.addressbook", 0);
+        dispatch_set_target_queue(addressBookQueue, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0));
+        dispatch_queue_set_specific(addressBookQueue, addressBookQueueSpecific, (void *)addressBookQueueSpecific, NULL);
+    });
+    
+    return addressBookQueue;
+}
+
+- (bool)isCurrentQueueAddressBookQueue
+{
+    return dispatch_get_specific(addressBookQueueSpecific) != NULL;
+}
+
+- (void)dispatchOnAddressBookQueue:(dispatch_block_t)block
+{
+    if ([self isCurrentQueueAddressBookQueue])
+    {
+        block();
+    }
+    else
+    {
+        dispatch_async([self addressBookQueue], ^
+        {
+            block();
+        });
+    }
+}
+
+- (void)resetForAccountSwitch
+{
+    [self clearState];
+    
+    TG_SYNCHRONIZED_BEGIN(_localSynchronizationPending);
+    _localSynchronizationPending = false;
+    TG_SYNCHRONIZED_END(_localSynchronizationPending);
+    
+    [self dispatchOnAddressBookQueue:^
+    {
+        _startupLocalSynchronizationPending = false;
+        [_startupLocalSynchronizationWaiters removeAllObjects];
+    }];
+}
+
+- (void)beginStartupLocalSynchronization
+{
+    [self dispatchOnAddressBookQueue:^
+    {
+        _startupLocalSynchronizationPending = true;
+        if (_startupLocalSynchronizationWaiters == nil)
+            _startupLocalSynchronizationWaiters = [[NSMutableArray alloc] init];
+    }];
+}
+
+- (void)finishStartupLocalSynchronization
+{
+    [self dispatchOnAddressBookQueue:^
+    {
+        _startupLocalSynchronizationPending = false;
+        NSArray *waiters = [_startupLocalSynchronizationWaiters copy];
+        [_startupLocalSynchronizationWaiters removeAllObjects];
+        for (dispatch_block_t block in waiters)
+            block();
+    }];
+}
+
+- (void)dispatchAfterStartupLocalSynchronization:(dispatch_block_t)block
+{
+    if (block == nil)
+        return;
+    [self dispatchOnAddressBookQueue:^
+    {
+        if (_startupLocalSynchronizationPending)
+            [_startupLocalSynchronizationWaiters addObject:[block copy]];
+        else
+            block();
+    }];
+}
+
+- (id)init
+{
+    self = [super init];
+    if (self != nil)
+    {
+        _localSynchronizationPending = false;
+        TG_SYNCHRONIZED_INIT(_localSynchronizationPending);
+        
+        _firstTimeSync = true;
+        _startupLocalSynchronizationPending = false;
+        _startupLocalSynchronizationWaiters = [[NSMutableArray alloc] init];
+        
+        int localSortOrder = 0;
+        if (ABPersonGetSortOrdering() == kABPersonSortByFirstName)
+            localSortOrder |= TGContactListSortOrderFirst;
+        else
+            localSortOrder |= TGContactListSortOrderLast;
+        
+        if (ABPersonGetCompositeNameFormat() == kABPersonCompositeNameFormatFirstNameFirst)
+            localSortOrder |= TGContactListSortOrderDisplayFirstFirst;
+        else
+            localSortOrder |= TGContactListSortOrderDisplayLastFirst;
+        
+        _sortOrder = localSortOrder;
+        
+        __weak TGSynchronizeContactsManager *weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^
+        {
+            TGSynchronizeContactsManager *strongSelf = weakSelf;
+            if (strongSelf != nil)
+                [[NSNotificationCenter defaultCenter] addObserver:strongSelf selector:@selector(applicationWillEnterForeground:) name:UIApplicationWillEnterForegroundNotification object:nil];
+        });
+    }
+    return self;
+}
+
+- (void)dealloc
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillEnterForegroundNotification object:nil];
+}
+
+- (void)applicationWillEnterForeground:(NSNotification *)__unused notification
+{
+    [self updateSortOrder];
+}
+
+- (void)updateSortOrder
+{
+    int localSortOrder = 0;
+    if (ABPersonGetSortOrdering() == kABPersonSortByFirstName)
+        localSortOrder |= TGContactListSortOrderFirst;
+    else
+        localSortOrder |= TGContactListSortOrderLast;
+    
+    if (ABPersonGetCompositeNameFormat() == kABPersonCompositeNameFormatFirstNameFirst)
+        localSortOrder |= TGContactListSortOrderDisplayFirstFirst;
+    else
+        localSortOrder |= TGContactListSortOrderDisplayLastFirst;
+    
+    if (localSortOrder != _sortOrder)
+    {
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            _sortOrder = localSortOrder;
+            [TGContactListRequestBuilder dispatchNewContactList];
+            [TGContactListRequestBuilder dispatchNewPhonebook];
+        }];
+    }
+}
+
+- (void)addressBookChanged
+{
+    if (TGTelegraphInstance.clientUserId == 0)
+        return;
+    
+    bool executeSync = false;
+    
+    TG_SYNCHRONIZED_BEGIN(_localSynchronizationPending);
+    if (!_localSynchronizationPending)
+    {
+        _localSynchronizationPending = true;
+        executeSync = true;
+    }
+    TG_SYNCHRONIZED_END(_localSynchronizationPending);
+    
+    if (executeSync)
+    {
+        TGDispatchAfter(0.5, dispatch_get_main_queue(), ^
+        {
+            static int actionId = 0;
+            [ActionStageInstance() requestActor:[[NSString alloc] initWithFormat:@"/tg/synchronizeContacts/(%d,local)", actionId++] options:nil watcher:TGTelegraphInstance];
+        });
+    }
+}
+
+- (void)addressBookChangeCommitted
+{
+    TG_SYNCHRONIZED_BEGIN(_localSynchronizationPending);
+    _localSynchronizationPending = false;
+    TG_SYNCHRONIZED_END(_localSynchronizationPending);
+}
+
+@end
+
+@implementation TGImportedPhone
+
+@end
+
+#pragma mark -
+
+@interface TGSynchronizeContactsActor ()
+
+@property (nonatomic, strong) NSArray *currentActionIds;
+
+@property (nonatomic) bool signalSynchronizationCompleted;
+
+@property (nonatomic) bool hadRemoteContacts;
+@property (nonatomic) bool remoteSynchronizationStarted;
+@property (nonatomic) bool skipRemoteReload;
+
+@end
+
+@implementation TGSynchronizeContactsActor
+
++ (NSString *)genericPath
+{
+    return @"/tg/synchronizeContacts/@";
+}
+
+- (id)initWithPath:(NSString *)path
+{
+    self = [super initWithPath:path];
+    if (self != nil)
+    {
+        _actionHandle = [[ASHandle alloc] initWithDelegate:self releaseOnMainThread:false];
+    }
+    return self;
+}
+
+- (void)dealloc
+{
+    [_actionHandle reset];
+    [ActionStageInstance() removeWatcher:self];
+}
+
+- (void)cancel
+{
+    [ActionStageInstance() removeWatcher:self];
+    
+    [super cancel];
+}
+
+- (void)prepare:(NSDictionary *)__unused options
+{
+    if ([self.path hasSuffix:@"removeAndExport)"] || [self.path hasSuffix:@"loadRemote)"] || [self.path hasSuffix:@"importLink)"] || [self.path hasSuffix:@"breakLink)"] || [self.path hasSuffix:@"appendPhone)"])
+        self.requestQueueName = @"contacts";
+    else if ([self.path hasSuffix:@"breakLinkLocal)"] || [self.path hasSuffix:@"changeNameLocal)"] || [self.path hasSuffix:@"changePhonesLocal)"] || [self.path hasSuffix:@"addContactLocal)"])
+        self.requestQueueName = nil;
+    else
+        self.requestQueueName = @"contactsSync";
+    
+    _signalSynchronizationCompleted = [[options objectForKey:@"signalSynchronizationCompleted"] boolValue];
+    _remoteSynchronizationStarted = [[options objectForKey:@"remoteSynchronizationStarted"] boolValue];
+    _skipRemoteReload = [[options objectForKey:@"skipRemoteReload"] boolValue];
+}
+
+- (void)execute:(NSDictionary *)options
+{
+    if ([self.path hasSuffix:@"removeAndExport)"])
+    {
+        [[TGSynchronizeContactsManager instance] setRemoveAndExportActionsRunning:true];
+        
+        [self processRemoveAndExportActions];
+        
+        return;
+    }
+    else if ([self.path hasSuffix:@"importLink)"])
+    {
+        TGUser *user = [options objectForKey:@"user"];
+        if (user == nil || user.phoneNumber.length == 0)
+            [self completeAction:false];
+        else
+            [self processAddContact:user];
+        
+        return;
+    }
+    else if ([self.path hasSuffix:@"breakLink)"])
+    {
+        int64_t uid = [[options objectForKey:@"uid"] longLongValue];
+        int phoneId = [TGDatabaseInstance() loadCachedPhoneIdByUid:uid];
+        
+        if (uid != 0 && phoneId != 0)
+            [self processRemoveContact:uid byPhoneId:phoneId];
+        else
+            [self completeAction:false];
+        
+        return;
+    }
+    else if ([self.path hasSuffix:@"breakLinkLocal)"])
+    {
+        int64_t uid = [[options objectForKey:@"uid"] longLongValue];
+        int nativeId = [[options objectForKey:@"nativeId"] intValue];
+        
+        if (uid != 0 && nativeId != 0)
+            [self processRemoveContact:uid byNativeId:nativeId];
+        else
+            [self completeAction:false];
+        
+        return;
+    }
+    else if ([self.path hasSuffix:@"appendPhone)"])
+    {
+        int64_t uid = [[options objectForKey:@"uid"] longLongValue];
+        int nativeId = [[options objectForKey:@"nativeId"] intValue];
+        
+        [[TGSynchronizeContactsManager instance] clearScheduledContactAddition:uid];
+        
+        if (uid != 0 && nativeId != 0)
+            [self processAppendContactPhone:uid nativeId:nativeId newPhone:options[@"phoneNumber"]];
+        else
+            [self completeAction:false];
+        
+        return;
+    }
+    else if ([self.path hasSuffix:@"changeNameLocal)"])
+    {
+        int64_t uid = [[options objectForKey:@"uid"] longLongValue];
+        int nativeId = [[options objectForKey:@"nativeId"] intValue];
+        NSString *firstName = [options objectForKey:@"firstName"];
+        NSString *lastName = [options objectForKey:@"lastName"];
+        
+        if (uid != 0 && nativeId != 0)
+            [self processChangeContactName:uid nativeId:nativeId changeFirstName:firstName changeLastName:lastName];
+        else
+            [self completeAction:false];
+        
+        return;
+    }
+    else if ([self.path hasSuffix:@"changePhonesLocal)"])
+    {
+        int64_t uid = [[options objectForKey:@"uid"] longLongValue];
+        int nativeId = [[options objectForKey:@"nativeId"] intValue];
+        NSArray *phones = [options objectForKey:@"phones"];
+        int64_t addingUid = [[options objectForKey:@"addingUid"] longLongValue];
+        bool removedMainPhone = [[options objectForKey:@"removedMainPhone"] boolValue];
+        NSString *vcard = [options objectForKey:@"vcard"];
+        
+        if (nativeId != 0 && phones != nil)
+            [self processChangeContactPhones:uid nativeId:nativeId changePhones:phones addingUid:addingUid removedMainPhone:removedMainPhone vcard:vcard];
+        else
+            [self completeAction:false];
+        
+        return;
+    }
+    else if ([self.path hasSuffix:@"addContactLocal)"])
+    {
+        TGPhonebookContact *contact = [options objectForKey:@"contact"];
+        NSString *vcard = [options objectForKey:@"vcard"];
+        if (contact != nil)
+        {
+            [self processCreateContact:contact uid:[[options objectForKey:@"uid"] longLongValue] vcard:vcard];
+        }
+        else
+            [self completeAction:false];
+    }
+    else if ([self.path hasSuffix:@"loadRemote)"])
+    {
+        std::vector<int64_t> contactIds;
+        NSData *countData = [TGDatabaseInstance() customProperty:@"contactRemoteNonRegisteredCount"];
+        int32_t count = 0;
+        if (countData.length == 4) {
+            [countData getBytes:&count length:4];
+        }
+        
+        [TGDatabaseInstance() loadRemoteContactUids:contactIds];
+        
+        std::sort(contactIds.begin(), contactIds.end());
+
+        NSArray *cachedContactUsers = [TGDatabaseInstance() loadContactUsers];
+        bool completeLocalCache = cachedContactUsers.count == contactIds.size();
+        if (completeLocalCache)
+        {
+            std::set<int64_t> cachedUserIds;
+            for (TGUser *user in cachedContactUsers)
+                cachedUserIds.insert(user.uid);
+            for (std::vector<int64_t>::iterator it = contactIds.begin(); it != contactIds.end(); it++)
+            {
+                if (cachedUserIds.find(*it) == cachedUserIds.end())
+                {
+                    completeLocalCache = false;
+                    break;
+                }
+            }
+        }
+        bool forceFull = [[options objectForKey:@"forceFull"] boolValue] || !completeLocalCache;
+        _hadRemoteContacts = !contactIds.empty();
+        self.cancelToken = [TGTelegraphInstance doRequestContactList:forceFull ? 0 : hashForContactIds(count, contactIds) actor:self];
+        
+        return;
+    }
+    
+    bool firstTimeSync = [[TGSynchronizeContactsManager instance] firstTimeSync];
+    if ([options[@"forceFirstTime"] boolValue]) {
+        [TGDatabaseInstance() replaceContactBindings:nil];
+        [TGDatabaseInstance() setCustomProperty:TGAddressBookSnapshotProperty value:nil];
+        [TGDatabaseInstance() setCustomProperty:@"exportState" value:nil];
+        [TGDatabaseInstance() replaceRemoteContactUids:@[]];
+        firstTimeSync = true;
+    }
+
+    [[TGSynchronizeContactsManager instance] setFirstTimeSync:false];
+    
+    [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:true];
+    
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        bool inhibit = TGAppDelegateInstance.contactsInhibitSync;
+        bool failed = addressBook == NULL || denied;
+        if (failed)
+        {
+            [[TGSynchronizeContactsManager instance] addressBookChangeCommitted];
+            [TGDatabaseInstance() replaceContactBindings:nil];
+            [[TGSynchronizeContactsManager instance] finishStartupLocalSynchronization];
+            
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                if (firstTimeSync)
+                    [TGContactListRequestBuilder dispatchNewContactList];
+                [TGContactListRequestBuilder dispatchNewPhonebook];
+                
+                [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(removeAndExport)" options:@{@"signalSynchronizationCompleted": @(!firstTimeSync), @"skipRemoteReload": @(_remoteSynchronizationStarted)} watcher:TGTelegraphInstance];
+                
+                if (firstTimeSync)
+                {
+                    if (!_remoteSynchronizationStarted && [ActionStageInstance() executingActorWithPath:@"/tg/synchronizeContacts/(loadRemote)"] == nil)
+                        [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(loadRemote)" options:nil watcher:TGTelegraphInstance];
+                }
+                else
+                    [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+                
+                [self completeAction:true];
+            }];
+            
+            return;
+        }
+        
+        
+        if (!inhibit)
+            TGRemoveImportedAddressBookDuplicates(addressBook);
+        
+        
+        CFArrayRef people = ABAddressBookCopyArrayOfAllPeople(addressBook);
+        [[TGSynchronizeContactsManager instance] addressBookChangeCommitted];
+
+        NSData *addressBookFingerprint = TGAddressBookFingerprint(people);
+        if (TGRestoreAddressBookSnapshot(addressBookFingerprint))
+        {
+            if (people != NULL)
+                CFRelease(people);
+            [[TGSynchronizeContactsManager instance] finishStartupLocalSynchronization];
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                [TGDatabaseInstance() setContactListPreloaded:true];
+                [TGContactListRequestBuilder dispatchNewContactList];
+                [TGContactListRequestBuilder dispatchNewPhonebook];
+                [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(removeAndExport)" options:@{@"signalSynchronizationCompleted": @(!_remoteSynchronizationStarted), @"skipRemoteReload": @(_remoteSynchronizationStarted)} watcher:TGTelegraphInstance];
+                [self completeAction:true];
+            }];
+            return;
+        }
+        
+        std::set<int> currentPhonebookPhoneIdsSet;
+        std::map<int, TGContactBinding *> currentBindings;
+        
+        for (TGContactBinding *binding in [TGDatabaseInstance() contactBindings])
+        {
+            int phoneId = binding.phoneId;
+            if (binding.phoneNumber.length != 0)
+                currentBindings.insert(std::pair<int, TGContactBinding *>(murMurHash32(binding.phoneNumber), binding));
+            currentPhonebookPhoneIdsSet.insert(phoneId);
+        }
+        
+        int count = (int)CFArrayGetCount(people);
+        
+        NSMutableArray *newBindings = [[NSMutableArray alloc] initWithCapacity:count];
+        NSMutableArray *newPhonebookContacts = [[NSMutableArray alloc] initWithCapacity:count];
+        
+        std::set<int> newPhonebookPhoneIdSet;
+        
+        std::map<int, TGContactBinding *> changedBindings;
+        
+        NSMutableData *newPhonebookState = [[NSMutableData alloc] initWithCapacity:count * 4];
+        NSMutableData *newExportState = [[NSMutableData alloc] initWithCapacity:count * 4];
+        
+        std::map<int, int> newExportIdToPhoneId;
+        
+        NSArray *users = [TGDatabaseInstance() loadContactUsers];
+        std::map<int, TGUser *> usersMap;
+        for (TGUser *user in users)
+        {
+            if (user.contactId != 0)
+                usersMap.insert(std::pair<int, TGUser *>(user.contactId, user));
+        }
+        
+        std::set<int> explicitExport;
+        
+        for (CFIndex i = 0; i < count; i++)
+        {
+            ABRecordRef person = CFArrayGetValueAtIndex(people, i);
+            int nativeId = ABRecordGetRecordID(person);
+            
+            NSString *firstName = (__bridge_transfer NSString *)ABRecordCopyValue(person, kABPersonFirstNameProperty);
+            NSString *lastName = (__bridge_transfer NSString *)ABRecordCopyValue(person, kABPersonLastNameProperty);
+            
+            if (firstName == nil)
+                firstName = @"";
+            if (lastName == nil)
+                lastName = @"";
+            
+            if (firstName.length == 0 && lastName.length == 0)
+            {
+                lastName = (__bridge_transfer NSString *)ABRecordCopyValue(person, kABPersonOrganizationProperty);
+                if (lastName == nil)
+                    lastName = @"";
+            }
+            
+            TGPhonebookContact *phonebookContact = [[TGPhonebookContact alloc] init];
+            phonebookContact.nativeId = nativeId;
+            phonebookContact.firstName = firstName;
+            phonebookContact.lastName = lastName;
+            
+            ABMultiValueRef phones = ABRecordCopyValue(person, kABPersonPhoneProperty);
+            
+            int phoneCount = phones == NULL ? 0 : (int)ABMultiValueGetCount(phones);
+            NSMutableArray *personPhones = [[NSMutableArray alloc] initWithCapacity:phoneCount];
+            
+            NSMutableArray *phonebookContactPhones = [[NSMutableArray alloc] initWithCapacity:phoneCount];
+            
+            for (CFIndex j = 0; j < phoneCount; j++)
+            {
+                NSString *number = (__bridge_transfer NSString *)ABMultiValueCopyValueAtIndex(phones, j);
+                NSString *label = nil;
+                
+                CFStringRef valueLabel = ABMultiValueCopyLabelAtIndex(phones, j);
+                if (valueLabel != NULL)
+                {
+                    label = (__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel(valueLabel);
+                    CFRelease(valueLabel);
+                }
+                
+                [phonebookContactPhones addObject:[[TGPhoneNumber alloc] initWithLabel:label number:number]];
+                
+                if (number != nil)
+                    number = [TGPhoneUtils cleanPhone:number];
+                
+                if (number.length != 0)
+                    [personPhones addObject:[NSArray arrayWithObjects:label == nil ? @"" : label, number, nil]];
+            }
+            if (phones != NULL)
+                CFRelease(phones);
+            
+            phonebookContact.phoneNumbers = phonebookContactPhones;
+            [newPhonebookContacts addObject:phonebookContact];
+            
+            if (personPhones.count == 0)
+                continue;
+            
+            int phoneIndex = -1;
+            for (NSArray *personPhoneDesc in personPhones)
+            {
+                phoneIndex++;
+                
+                NSString *currentPhoneNumber = [personPhoneDesc objectAtIndex:1];
+                int phoneId = phoneMatchHash(currentPhoneNumber);
+                if (newPhonebookPhoneIdSet.find(phoneId) != newPhonebookPhoneIdSet.end())
+                    continue;
+                
+                newPhonebookPhoneIdSet.insert(phoneId);
+                [newPhonebookState appendBytes:&phoneId length:4];
+                
+                NSString *exportString = [[NSString alloc] initWithFormat:@"%@%@%@", firstName, lastName, currentPhoneNumber];
+                int exportId = murMurHash32(exportString);
+                [newExportState appendBytes:&exportId length:4];
+                
+                newExportIdToPhoneId.insert(std::pair<int, int>(exportId, phoneId));
+                
+                if (usersMap.find(phoneId) == usersMap.end())
+                    explicitExport.insert(phoneId);
+                
+                TGContactBinding *binding = [[TGContactBinding alloc] init];
+                binding.phoneId = phoneId;
+                
+                binding.firstName = firstName;
+                binding.lastName = lastName;
+                binding.phoneNumber = currentPhoneNumber;
+                
+                [newBindings addObject:binding];
+                
+                int bindingHash = murMurHash32(currentPhoneNumber);
+                std::map<int, TGContactBinding *>::iterator it = currentBindings.find(bindingHash);
+                if (it == currentBindings.end() || ![it->second equalsToContactBinding:binding])
+                    changedBindings.insert(std::pair<int, TGContactBinding *>(bindingHash, binding));
+            }
+        }
+        
+        for (std::map<int, TGContactBinding *>::iterator it = currentBindings.begin(); it != currentBindings.end(); it++)
+        {
+            if (newPhonebookPhoneIdSet.find(it->second.phoneId) == newPhonebookPhoneIdSet.end())
+                changedBindings.insert(std::pair<int, TGContactBinding *>(it->first, nil));
+        }
+        
+        if (people != NULL)
+            CFRelease(people);
+        
+        std::set<int> contactIdsToLoad;
+        for (std::map<int, TGContactBinding *>::iterator it = changedBindings.begin(); it != changedBindings.end(); it++)
+        {
+            contactIdsToLoad.insert(it->first);
+        }
+        
+        NSMutableArray *userDataToDispatch = [[NSMutableArray alloc] init];
+        
+        int64_t clientUserId = TGTelegraphInstance.clientUserId;
+        
+        std::map<int, TGUser *> usersToUpdate;
+        [TGDatabaseInstance() loadCachedUsersWithContactIds:contactIdsToLoad resultMap:usersToUpdate];
+        for (std::map<int, TGUser *>::iterator it = usersToUpdate.begin(); it != usersToUpdate.end(); it++)
+        {
+            std::map<int, TGContactBinding *>::iterator contactIt = changedBindings.find(it->first);
+            if (contactIt != changedBindings.end())
+            {
+                TGUser *user = it->second;
+                if (user.uid == clientUserId)
+                    continue;
+                
+                TGContactBinding *binding = contactIt->second;
+                if (((user.phonebookFirstName != nil) != (binding.firstName != nil) || (user.phonebookFirstName != nil && ![user.phonebookFirstName isEqualToString:binding.firstName])) ||
+                    ((user.phonebookLastName != nil) != (binding.lastName != nil) || (user.phonebookLastName != nil && ![user.phonebookLastName isEqualToString:binding.lastName])))
+                {
+                    user = [it->second copy];
+                    user.phonebookFirstName = contactIt->second.firstName;
+                    user.phonebookLastName = contactIt->second.lastName;
+                    [userDataToDispatch addObject:user];
+                }
+            }
+        }
+        
+        bool updateContactList = false;
+        
+        NSData *data = [TGDatabaseInstance() customProperty:@"phonebookState"];
+        if (data.length != 0)
+        {
+            std::set<int> lastPhonebookPhoneIdsSet;
+            
+            int ptr = 0;
+            int length = (int)data.length;
+            const uint8_t *dataBytes = (const uint8_t *)data.bytes;
+            while (ptr < length)
+            {
+                int contactId = *((int *)(dataBytes + ptr));
+                ptr += 4;
+                
+                if (contactId != 0)
+                    lastPhonebookPhoneIdsSet.insert(contactId);
+            }
+            
+            std::set<int> deletedContactIdsSet;
+            std::set_difference(lastPhonebookPhoneIdsSet.begin(), lastPhonebookPhoneIdsSet.end(), newPhonebookPhoneIdSet.begin(), newPhonebookPhoneIdSet.end(), std::inserter(deletedContactIdsSet, deletedContactIdsSet.end()));
+            
+            bool contactUidToContactIdLoaded = false;
+            std::map<int, int64_t> contactUidToContactId;
+            
+            NSMutableArray *removeContactUids = nil;
+            NSMutableArray *newRemoveContactActions = [[NSMutableArray alloc] init];
+            
+            for (std::set<int>::iterator it = deletedContactIdsSet.begin(); it != deletedContactIdsSet.end(); it++)
+            {
+                int64_t uid = 0;
+                
+                std::map<int, TGUser *>::iterator userIt = usersToUpdate.find(*it);
+                if (userIt != usersToUpdate.end())
+                    uid = userIt->second.uid;
+                else
+                {
+                    if (!contactUidToContactIdLoaded)
+                    {
+                        contactUidToContactIdLoaded = true;
+                        [TGDatabaseInstance() loadRemoteContactUidsContactIds:contactUidToContactId];
+                    }
+                    
+                    std::map<int, int64_t>::iterator contactIdIt = contactUidToContactId.find(*it);
+                    if (contactIdIt != contactUidToContactId.end())
+                        uid = contactIdIt->second;
+                }
+                
+                if (uid != 0)
+                {
+                    if (removeContactUids == nil)
+                        removeContactUids = [[NSMutableArray alloc] init];
+                    
+                    [removeContactUids addObject:[[NSNumber alloc] initWithLongLong:uid]];
+                    [newRemoveContactActions addObject:[[TGRemoveContactFutureAction alloc] initWithUid:uid]];
+                }
+                else
+                {
+                    TGLog(@"Couldn't resolve deleted contact id %d", *it);
+                }
+            }
+            
+            if (newRemoveContactActions.count != 0)
+                [TGDatabaseInstance() storeFutureActions:newRemoveContactActions];
+            
+            if (removeContactUids != nil && removeContactUids.count != 0)
+            {
+                [TGDatabaseInstance() deleteRemoteContactUids:removeContactUids];
+                updateContactList = true;
+            }
+        }
+        [TGDatabaseInstance() setCustomProperty:@"phonebookState" value:newPhonebookState];
+        
+        std::set<int> lastExportState;
+        NSData *lastExportStateData = [TGDatabaseInstance() customProperty:@"exportState"];
+        if (lastExportStateData.length != 0)
+        {
+            const uint8_t *lastExportStateDataBytes = (const uint8_t *)lastExportStateData.bytes;
+            int ptr = 0;
+            int length = (int)lastExportStateData.length;
+            while (ptr < length)
+            {
+                int exportId = *((int *)(lastExportStateDataBytes + ptr));
+                ptr += 4;
+                
+                if (exportId != 0)
+                    lastExportState.insert(exportId);
+            }
+        }
+    
+        NSMutableArray *currentExportActions = nil;
+        int currentExportActionsCount = 0;
+        
+        for (std::map<int, int>::iterator it = newExportIdToPhoneId.begin(); it != newExportIdToPhoneId.end(); it++)
+        {
+            if (lastExportState.find(it->first) == lastExportState.end())
+            {
+                if (currentExportActions == nil)
+                    currentExportActions = [[NSMutableArray alloc] init];
+                [currentExportActions addObject:[[TGExportContactFutureAction alloc] initWithContactId:it->second]];
+                currentExportActionsCount++;
+                
+                explicitExport.erase(it->second);
+            }
+        }
+        
+        NSData *completedExplicitExport = [TGDatabaseInstance() customProperty:@"explicitExport"];
+        if (!inhibit && completedExplicitExport == nil)
+        {
+            if (currentExportActions == nil)
+                currentExportActions = [[NSMutableArray alloc] init];
+            
+            for (std::set<int>::iterator it = explicitExport.begin(); it != explicitExport.end(); it++)
+            {
+                [currentExportActions addObject:[[TGExportContactFutureAction alloc] initWithContactId:*it]];
+            }
+            
+            bool flag = true;
+            [TGDatabaseInstance() setCustomProperty:@"explicitExport" value:[NSData dataWithBytes:&flag length:sizeof(bool)]];
+        }
+        
+        if (!inhibit)
+        {
+            if (currentExportActions != nil && currentExportActions.count != 0)
+                [TGDatabaseInstance() storeFutureActions:currentExportActions];
+        
+            [TGDatabaseInstance() setCustomProperty:@"exportState" value:newExportState];
+        }
+        
+        [TGDatabaseInstance() replaceContactBindings:newBindings];
+        [TGDatabaseInstance() replacePhonebookContacts:newPhonebookContacts];
+        TGStoreAddressBookSnapshot(addressBookFingerprint, newBindings, newPhonebookContacts);
+        [[TGSynchronizeContactsManager instance] finishStartupLocalSynchronization];
+        
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            if (userDataToDispatch.count != 0)
+                [TGContactListRequestBuilder clearCache];
+            
+            [TGDatabaseInstance() setContactListPreloaded:true];
+            [TGUserDataRequestBuilder executeUserObjectsUpdate:userDataToDispatch];
+            
+            if (updateContactList || firstTimeSync)
+                [TGContactListRequestBuilder dispatchNewContactList];
+            [TGContactListRequestBuilder dispatchNewPhonebook];
+            
+            [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(removeAndExport)" options:@{@"signalSynchronizationCompleted": @(!firstTimeSync), @"skipRemoteReload": @(_remoteSynchronizationStarted)} watcher:TGTelegraphInstance];
+            
+            if (firstTimeSync)
+            {
+                if (!_remoteSynchronizationStarted && [ActionStageInstance() executingActorWithPath:@"/tg/synchronizeContacts/(loadRemote)"] == nil)
+                    [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(loadRemote)" options:nil watcher:TGTelegraphInstance];
+                
+                [self completeAction:true];
+            }
+            else
+            {
+                [self importContacts:^(bool imported)
+                {
+                    [ActionStageInstance() dispatchOnStageQueue:^
+                    {
+                        if (imported)
+                        {
+                            [TGContactListRequestBuilder dispatchNewContactList];
+                            [TGContactListRequestBuilder dispatchNewPhonebook];
+                        }
+                        
+                        [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+                        
+                        [self completeAction:true];
+                    }];
+                }];
+            }
+        }];        
+    });
+}
+
+#pragma mark -
+
+- (void)processRemoveAndExportActions
+{
+    NSMutableArray *removeUids = [[NSMutableArray alloc] init];
+    
+    NSArray *removeContactActions = [TGDatabaseInstance() loadFutureActionsWithType:TGRemoveContactFutureActionType];
+    for (TGRemoveContactFutureAction *action in removeContactActions)
+    {
+        [removeUids addObject:[[NSNumber alloc] initWithLongLong:[action uid]]];
+    }
+    
+    if (removeUids.count != 0)
+    {
+        _currentActionIds = removeUids;
+        
+        self.cancelToken = [TGTelegraphInstance doDeleteContacts:removeUids actor:self];
+    }
+    else
+    {
+        NSArray *exportContactActions = [TGDatabaseInstance() loadFutureActionsWithType:TGExportContactFutureActionType];
+        if (exportContactActions.count == 0)
+        {
+            [self completeAction:true];
+            
+            return;
+        }
+        
+        const int maxExportCount = 300;
+        
+        NSMutableArray *contactsToExport = [[NSMutableArray alloc] init];
+        NSMutableArray *exportActionIds = [[NSMutableArray alloc] init];
+        
+        int currentNumberOfExportActions = 0;
+        
+        for (TGExportContactFutureAction *action in exportContactActions)
+        {
+            TGContactBinding *binding = [TGDatabaseInstance() contactBindingWithId:[action contactId]];
+            if (binding == nil)
+                [TGDatabaseInstance() removeFutureAction:action.uniqueId type:action.type randomId:action.randomId];
+            else
+            {
+                [exportActionIds addObject:[[NSNumber alloc] initWithInt:binding.phoneId]];
+                [contactsToExport addObject:binding];
+                
+                currentNumberOfExportActions++;
+                
+                if (currentNumberOfExportActions > maxExportCount)
+                    break;
+            }
+        }
+        
+        _currentActionIds = exportActionIds;
+        
+        if (contactsToExport.count == 0)
+        {
+            [self completeAction:true];
+            
+            return;
+        }
+        else {
+            self.cancelToken = [TGTelegraphInstance doExportContacts:contactsToExport requestBuilder:self];
+        }
+    }
+}
+
+- (void)deleteContactsSuccess:(NSArray *)__unused uids
+{
+    [TGDatabaseInstance() removeFutureActionsWithType:TGRemoveContactFutureActionType uniqueIds:_currentActionIds];
+    _currentActionIds = nil;
+    
+    [self processRemoveAndExportActions];
+}
+
+- (void)deleteContactsFailed:(NSArray *)uids
+{
+    [self deleteContactsSuccess:uids];
+}
+
+- (void)exportContactsSuccess:(NSArray *)importedPhonesArray popularContacts:(NSArray *)popularContacts users:(NSArray *)users
+{
+    [TGDatabaseInstance() removeFutureActionsWithType:TGExportContactFutureActionType uniqueIds:_currentActionIds];
+    _currentActionIds = nil;
+    
+    [TGUserDataRequestBuilder executeUserDataUpdate:users];
+    std::vector<int64_t> remoteContactUids;
+    [TGDatabaseInstance() loadRemoteContactUids:remoteContactUids];
+    std::set<int64_t> currentRemoteContactUidsSet;
+    for (std::vector<int64_t>::iterator it = remoteContactUids.begin(); it != remoteContactUids.end(); it++)
+        currentRemoteContactUidsSet.insert(*it);
+    
+    NSMutableArray *addedRemoteUids = [[NSMutableArray alloc] init];
+    
+    for (TGImportedPhone *importedPhone in importedPhonesArray)
+    {
+        if (currentRemoteContactUidsSet.find(importedPhone.user_id) == currentRemoteContactUidsSet.end())
+        {
+            [addedRemoteUids addObject:[[NSNumber alloc] initWithLongLong:importedPhone.user_id]];
+        }
+    }
+    
+    [TGDatabaseInstance() replacePopularInvitees:popularContacts];
+    
+    if (addedRemoteUids.count != 0)
+    {
+        [TGDatabaseInstance() addRemoteContactUids:addedRemoteUids];
+        [TGContactListRequestBuilder dispatchNewContactList];
+    }
+    
+    [self processRemoveAndExportActions];
+}
+
+- (void)exportContactsFailed
+{
+    TGDispatchAfter(1.0, [ActionStageInstance() globalStageDispatchQueue], ^
+    {
+        [self processRemoveAndExportActions];
+    });
+}
+
+#pragma mark -
+
+- (void)processCreateContact:(TGPhonebookContact *)phonebookContact uid:(int64_t)uid vcard:(NSString *)vcard
+{
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        if (addressBook == NULL || denied)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                [self completeAction:false];
+            }];
+            
+            return;
+        }
+        
+        CFErrorRef error = NULL;
+        ABRecordRef newPerson = ABPersonCreate();
+        
+        TGPhonebookContact *newPhonebookContact = [phonebookContact copy];
+        
+        if (phonebookContact.firstName != nil)
+            ABRecordSetValue(newPerson, kABPersonFirstNameProperty, (__bridge CFTypeRef)(phonebookContact.firstName), &error);
+        if (phonebookContact.lastName != nil)
+            ABRecordSetValue(newPerson, kABPersonLastNameProperty, (__bridge CFTypeRef)(phonebookContact.lastName), &error);
+        
+        ABMutableMultiValueRef multiPhone = ABMultiValueCreateMutable(kABMultiStringPropertyType);
+        
+        NSMutableArray *actions = TGAppDelegateInstance.contactsInhibitSync ? [[NSMutableArray alloc] init] : nil;
+        for (TGPhoneNumber *phoneNumber in phonebookContact.phoneNumbers)
+        {
+            NSString *phoneLabel = nativePhoneLabelForString(phoneNumber.label);
+            
+            ABMultiValueAddValueAndLabel(multiPhone, (__bridge CFTypeRef)phoneNumber.number, (__bridge CFStringRef)phoneLabel, NULL);
+            
+            if (actions != nil)
+                [actions addObject:[[TGExportContactFutureAction alloc] initWithContactId:phoneMatchHash(phoneNumber.number)]];
+        }
+        
+        ABRecordSetValue(newPerson, kABPersonPhoneProperty, multiPhone, nil);
+        CFRelease(multiPhone);
+        
+        if (vcard.length > 0)
+        {
+            NSData *vCardData = [vcard dataUsingEncoding:NSUTF8StringEncoding];
+            ABRecordRef person = TGVCardCreatePersonFromData(vCardData);
+            if (person != NULL)
+            {
+                void (^copySingleValueProperty)(ABPropertyID) = ^(ABPropertyID property) {
+                    CFTypeRef value = ABRecordCopyValue(person, property);
+                    if (value != NULL) {
+                        ABRecordSetValue(newPerson, property, value, NULL);
+                        CFRelease(value);
+                    }
+                };
+
+                void (^copyMultiValueProperty)(ABPropertyID) = ^(ABPropertyID property) {
+                    ABMultiValueRef values = ABRecordCopyValue(person, property);
+                    NSInteger valueCount = (values == NULL) ? 0 : ABMultiValueGetCount(values);
+                    
+                    if (valueCount == 0) {
+                        if (values != NULL)
+                            CFRelease(values);
+                        return;
+                    }
+                    
+                    ABPropertyType multiType = (property == kABPersonAddressProperty || property == kABPersonInstantMessageProperty || property == TGVCardSocialProfileProperty) ? kABMultiDictionaryPropertyType : kABMultiStringPropertyType;
+                    ABMutableMultiValueRef multiValue = ABMultiValueCreateMutable(multiType);
+                    
+                    for (CFIndex i = 0; i < valueCount; i++) {
+                        CFTypeRef value = ABMultiValueCopyValueAtIndex(values, i);
+                        CFStringRef label = ABMultiValueCopyLabelAtIndex(values, i);
+                        
+                        ABMultiValueAddValueAndLabel(multiValue, value, label, NULL);
+                        
+                        if (value != NULL)
+                            CFRelease(value);
+                        if (label != NULL)
+                            CFRelease(label);
+                    }
+                    
+                    ABRecordSetValue(newPerson, property, multiValue, nil);
+                    CFRelease(multiValue);
+                    
+                    if (values != NULL)
+                        CFRelease(values);
+                };
+                
+                copySingleValueProperty(kABPersonPrefixProperty);
+                copySingleValueProperty(kABPersonSuffixProperty);
+                copySingleValueProperty(kABPersonOrganizationProperty);
+                copySingleValueProperty(kABPersonJobTitleProperty);
+                copySingleValueProperty(kABPersonDepartmentProperty);
+                copySingleValueProperty(kABPersonBirthdayProperty);
+                
+                copyMultiValueProperty(kABPersonPhoneProperty);
+                copyMultiValueProperty(kABPersonEmailProperty);
+                copyMultiValueProperty(kABPersonURLProperty);
+                copyMultiValueProperty(kABPersonAddressProperty);
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 50000
+                if (iosMajorVersion() >= 5)
+                    copyMultiValueProperty(kABPersonSocialProfileProperty);
+#endif
+                copyMultiValueProperty(kABPersonInstantMessageProperty);
+                CFRelease(person);
+            }
+        }
+        
+        ABAddressBookAddRecord(addressBook, newPerson, &error);
+        ABAddressBookSave(addressBook, &error);
+        
+        newPhonebookContact.nativeId = ABRecordGetRecordID(newPerson);
+        
+        CFRelease(newPerson);
+        
+        if (error != NULL)
+        {
+            CFStringRef errorDesc = CFErrorCopyDescription(error);
+            CFRelease(errorDesc);
+        }
+        
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            if (uid != 0)
+            {
+                TGUser *newUser = [[TGDatabaseInstance() loadUser:uid] copy];
+                newUser.phonebookFirstName = phonebookContact.firstName;
+                newUser.phonebookLastName = phonebookContact.lastName;
+                [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+            }
+            
+            [TGDatabaseInstance() replacePhonebookContact:0 phonebookContact:newPhonebookContact generateContactBindings:true];
+            if (uid != 0)
+            {
+                [TGDatabaseInstance() addRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], nil]];
+                int link = [TGDatabaseInstance() loadUserLink:uid outdated:NULL];
+                link &= ~TGUserLinkMyRequested;
+                link |= TGUserLinkMyContact;
+                [TGUserDataRequestBuilder executeUserLinkUpdates:[NSArray arrayWithObject:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], [[NSNumber alloc] initWithInt:link], nil]]];
+            }
+            
+            [TGContactListRequestBuilder dispatchNewContactList];
+            [TGContactListRequestBuilder dispatchNewPhonebook];
+            
+            if (actions.count > 0)
+                [TGDatabaseInstance() storeFutureActions:actions];
+            
+            [self completeAction:true];
+            
+            [[TGSynchronizeContactsManager instance] addressBookChanged];
+        }];
+    });
+}
+
+- (void)processAddContact:(TGUser *)user
+{
+    int contactId = user.contactId;
+    if (contactId == 0)
+    {
+        [self completeAction:true];
+        
+        return;
+    }
+    
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        if (addressBook == NULL || denied)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                [TGDatabaseInstance() addRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:user.uid], nil]];
+                [TGContactListRequestBuilder dispatchNewContactList];
+                
+                [self completeAction:true];
+            }];
+            
+            return;
+        }
+        
+        bool imported = false;
+    
+        if (user.phoneNumber.length != 0 && [TGDatabaseInstance() contactBindingWithId:user.contactId] == nil)
+        {
+            if ([self importContactToPhonebook:addressBook user:user])
+            {
+                imported = true;
+                ABAddressBookSave(addressBook, nil);
+            }
+        }
+        
+        NSData *phonebookData = [TGDatabaseInstance() customProperty:@"phonebookState"];
+        NSMutableData *newPhonebookData = [[NSMutableData alloc] initWithCapacity:phonebookData.length + 4];
+        if (phonebookData != nil)
+            [newPhonebookData appendData:phonebookData];
+        int newContactId = contactId;
+        [newPhonebookData appendBytes:&newContactId length:4];
+        [TGDatabaseInstance() setCustomProperty:@"phonebookState" value:newPhonebookData];
+        
+        NSData *exportData = [TGDatabaseInstance() customProperty:@"exportState"];
+        NSMutableData *newExportData = [[NSMutableData alloc] initWithCapacity:exportData.length + 4];
+        if (exportData != nil)
+            [newExportData appendData:exportData];
+        int newExportId = murMurHash32([[NSString alloc] initWithFormat:@"%@%@%@", user.firstName, user.lastName, user.phoneNumber]);
+        [newExportData appendBytes:&newExportId length:4];
+        [TGDatabaseInstance() setCustomProperty:@"exportState" value:newExportData];
+        
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            [TGDatabaseInstance() addRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:user.uid], nil]];
+            [TGContactListRequestBuilder dispatchNewContactList];
+            if (imported)
+                [TGContactListRequestBuilder dispatchNewPhonebook];
+            
+            [self completeAction:true];
+        }];
+    });
+}
+
+- (void)processChangeContactName:(int64_t)uid nativeId:(int)nativeId changeFirstName:(NSString *)changeFirstName changeLastName:(NSString *)changeLastName
+{
+    if (![TGDatabaseInstance() uidIsRemoteContact:uid])
+    {
+        [self completeAction:false];
+        return;
+    }
+    
+    TGUser *user = [TGDatabaseInstance() loadUser:uid];
+    if (user == nil || nativeId == 0)
+    {
+        [self completeAction:false];
+        return;
+    }
+    
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        if (addressBook == NULL || denied)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                [self completeAction:false];
+            }];
+            
+            return;
+        }
+        
+        ABRecordRef person = ABAddressBookGetPersonWithRecordID(addressBook, nativeId);
+        if (person != NULL)
+        {
+            ABRecordSetValue(person, kABPersonFirstNameProperty, (__bridge CFStringRef)changeFirstName, NULL);
+            ABRecordSetValue(person, kABPersonLastNameProperty, (__bridge CFStringRef)changeLastName, NULL);
+            
+            ABAddressBookSave(addressBook, NULL);
+        }
+        
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {   
+            TGPhonebookContact *phonebookContact = [TGDatabaseInstance() phonebookContactByNativeId:nativeId];
+            phonebookContact = [phonebookContact copy];
+            phonebookContact.firstName = changeFirstName;
+            phonebookContact.lastName = changeLastName;
+            [TGDatabaseInstance() replacePhonebookContact:nativeId phonebookContact:phonebookContact generateContactBindings:true];
+            
+            TGUser *newUser = [user copy];
+            newUser.phonebookFirstName = changeFirstName;
+            newUser.phonebookLastName = changeLastName;
+            [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+            
+            [TGContactListRequestBuilder dispatchNewContactList];
+            [TGContactListRequestBuilder dispatchNewPhonebook];
+            
+            
+            [self completeAction:true];
+            
+            [[TGSynchronizeContactsManager instance] addressBookChanged];
+        }];
+    });
+}
+
+- (void)processAppendContactPhone:(int64_t)uid nativeId:(int)nativeId newPhone:(NSString *)newPhone
+{
+    if (![TGDatabaseInstance() uidIsRemoteContact:uid] || newPhone.length == 0)
+    {
+        [self completeAction:false];
+        return;
+    }
+    
+    TGUser *user = [TGDatabaseInstance() loadUser:uid];
+    if (user == nil || nativeId == 0)
+    {
+        [self completeAction:false];
+        return;
+    }
+    
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        if (addressBook == NULL || denied)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                [self completeAction:false];
+            }];
+            
+            return;
+        }
+        
+        NSMutableArray *phoneNumbers = [[NSMutableArray alloc] init];
+        
+        bool found = false;
+        ABRecordRef person = ABAddressBookGetPersonWithRecordID(addressBook, nativeId);
+        if (person != NULL)
+        {
+            ABMutableMultiValueRef mutablePhones = ABMultiValueCreateMutable(kABMultiStringPropertyType);
+            
+            ABMultiValueRef phones = ABRecordCopyValue(person, kABPersonPhoneProperty);
+            if (phones != NULL)
+            {
+                int phoneCount = (int)ABMultiValueGetCount(phones);
+                for (CFIndex j = 0; j < phoneCount; j++)
+                {
+                    NSString *phone = (__bridge_transfer NSString *)ABMultiValueCopyValueAtIndex(phones, j);
+                    NSString *label = (__bridge_transfer NSString *)ABMultiValueCopyLabelAtIndex(phones, j);
+                    if (label != nil)
+                    {
+                        label = (__bridge_transfer NSString *)ABAddressBookCopyLocalizedLabel((__bridge CFStringRef)label);
+                    }
+                    
+                    if (phone.length != 0)
+                    {
+                        if (TGStringCompare([TGPhoneUtils cleanPhone:phone], [TGPhoneUtils cleanPhone:newPhone]))
+                            found = true;
+                        
+                        ABMultiValueAddValueAndLabel(mutablePhones, (__bridge CFStringRef)phone, (__bridge CFStringRef)nativePhoneLabelForString(label), NULL);
+                    }
+                    
+                    [phoneNumbers addObject:[[TGPhoneNumber alloc] initWithLabel:label == nil ? @"" : label number:phone == nil ? @"" : phone]];
+                }
+                CFRelease(phones);
+            }
+            
+            if (!found)
+            {
+                NSString *label = [[TGSynchronizeContactsManager phoneLabels] firstObject];
+                
+                ABMultiValueInsertValueAndLabelAtIndex(mutablePhones, (__bridge CFStringRef)newPhone, (__bridge CFStringRef)label, 0, NULL);
+                
+                [phoneNumbers insertObject:[[TGPhoneNumber alloc] initWithLabel:label number:newPhone] atIndex:0];
+
+                ABRecordSetValue(person, kABPersonPhoneProperty, mutablePhones, NULL);
+                ABAddressBookSave(addressBook, NULL);
+            }
+            
+            CFRelease(mutablePhones);
+        }
+        
+        if (!found)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                TGPhonebookContact *phonebookContact = [TGDatabaseInstance() phonebookContactByNativeId:nativeId];
+                phonebookContact = [phonebookContact copy];
+                phonebookContact.phoneNumbers = phoneNumbers;
+                [TGDatabaseInstance() replacePhonebookContact:nativeId phonebookContact:phonebookContact generateContactBindings:true];
+                
+                [TGContactListRequestBuilder dispatchNewContactList];
+                [TGContactListRequestBuilder dispatchNewPhonebook];
+                
+                [self completeAction:true];
+                
+                [[TGSynchronizeContactsManager instance] addressBookChanged];
+            }];
+        }
+    });
+}
+
+
+- (void)processChangeContactPhones:(int64_t)uid nativeId:(int)nativeId changePhones:(NSArray *)changePhones addingUid:(int64_t)addingUid removedMainPhone:(bool)removedMainPhone vcard:(NSString *)vcard
+{
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        if (addressBook == NULL || denied)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                [self completeAction:false];
+            }];
+            
+            return;
+        }
+        
+        ABRecordRef person = ABAddressBookGetPersonWithRecordID(addressBook, nativeId);
+        
+        if (person != NULL)
+        {
+            ABMutableMultiValueRef mutablePhones = ABMultiValueCreateMutable(kABMultiStringPropertyType);
+            
+            for (TGPhoneNumber *phoneNumber in changePhones)
+            {
+                NSString *label = nativePhoneLabelForString(phoneNumber.label);
+                
+                ABMultiValueAddValueAndLabel(mutablePhones, (__bridge CFStringRef)phoneNumber.number, (__bridge CFStringRef)label, NULL);
+            }
+            ABRecordSetValue(person, kABPersonPhoneProperty, mutablePhones, NULL);
+            CFRelease(mutablePhones);
+            
+            if (vcard.length > 0)
+            {
+                NSData *vCardData = [vcard dataUsingEncoding:NSUTF8StringEncoding];
+                ABRecordRef vcardPerson = TGVCardCreatePersonFromData(vCardData);
+                if (vcardPerson != NULL)
+                {
+                void (^copySingleValueProperty)(ABPropertyID) = ^(ABPropertyID property) {
+                    CFTypeRef value = ABRecordCopyValue(vcardPerson, property);
+                    if (value != NULL) {
+                        ABRecordSetValue(person, property, value, NULL);
+                        CFRelease(value);
+                    }
+                };
+                
+                void (^copyMultiValueProperty)(ABPropertyID) = ^(ABPropertyID property) {
+                    ABMultiValueRef values = ABRecordCopyValue(vcardPerson, property);
+                    NSInteger valueCount = (values == NULL) ? 0 : ABMultiValueGetCount(values);
+                    
+                    if (valueCount == 0) {
+                        if (values != NULL)
+                            CFRelease(values);
+                        return;
+                    }
+                    
+                    ABPropertyType multiType = (property == kABPersonAddressProperty || property == kABPersonInstantMessageProperty || property == TGVCardSocialProfileProperty) ? kABMultiDictionaryPropertyType : kABMultiStringPropertyType;
+                    ABMutableMultiValueRef multiValue = ABMultiValueCreateMutable(multiType);
+                    
+                    for (CFIndex i = 0; i < valueCount; i++) {
+                        CFTypeRef value = ABMultiValueCopyValueAtIndex(values, i);
+                        CFStringRef label = ABMultiValueCopyLabelAtIndex(values, i);
+                        
+                        ABMultiValueAddValueAndLabel(multiValue, value, label, NULL);
+                        
+                        if (value != NULL)
+                            CFRelease(value);
+                        if (label != NULL)
+                            CFRelease(label);
+                    }
+                    
+                    ABRecordSetValue(person, property, multiValue, nil);
+                    CFRelease(multiValue);
+                    
+                    if (values != NULL)
+                        CFRelease(values);
+                };
+                
+                copySingleValueProperty(kABPersonOrganizationProperty);
+                copySingleValueProperty(kABPersonJobTitleProperty);
+                copySingleValueProperty(kABPersonDepartmentProperty);
+                copySingleValueProperty(kABPersonBirthdayProperty);
+                
+                copyMultiValueProperty(kABPersonEmailProperty);
+                copyMultiValueProperty(kABPersonURLProperty);
+                copyMultiValueProperty(kABPersonAddressProperty);
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 50000
+                if (iosMajorVersion() >= 5)
+                    copyMultiValueProperty(kABPersonSocialProfileProperty);
+#endif
+                copyMultiValueProperty(kABPersonInstantMessageProperty);
+                CFRelease(vcardPerson);
+                }
+            }
+            
+            ABAddressBookSave(addressBook, NULL);
+        }
+        
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {   
+            TGPhonebookContact *phonebookContact = [TGDatabaseInstance() phonebookContactByNativeId:nativeId];
+            phonebookContact = [phonebookContact copy];
+            phonebookContact.phoneNumbers = changePhones;
+            [TGDatabaseInstance() replacePhonebookContact:phonebookContact.nativeId phonebookContact:phonebookContact generateContactBindings:true];
+            
+            if (addingUid != 0)
+            {
+                TGUser *newUser = [[TGDatabaseInstance() loadUser:addingUid] copy];
+                newUser.phonebookFirstName = phonebookContact.firstName;
+                newUser.phonebookLastName = phonebookContact.lastName;
+                [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+                
+                [TGDatabaseInstance() addRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:addingUid], nil]];
+                int link = [TGDatabaseInstance() loadUserLink:addingUid outdated:NULL];
+                link &= ~TGUserLinkMyRequested;
+                link |= TGUserLinkMyContact;
+                [TGUserDataRequestBuilder executeUserLinkUpdates:[NSArray arrayWithObject:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:addingUid], [[NSNumber alloc] initWithInt:link], nil]]];
+            }
+            
+            if (removedMainPhone && uid != 0)
+            {
+                TGUser *newUser = [[TGDatabaseInstance() loadUser:uid] copy];
+                newUser.phonebookFirstName = nil;
+                newUser.phonebookLastName = nil;
+                [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+                
+                int link = [TGDatabaseInstance() loadUserLink:uid outdated:NULL];
+                link &= ~TGUserLinkMyContact;
+                if (link & TGUserLinkForeignMutual)
+                    link &= ~TGUserLinkForeignMutual;
+                link |= TGUserLinkForeignRequested;
+                link |= TGUserLinkMyRequested;
+                link |= TGUserLinkForeignHasPhone;
+                [TGUserDataRequestBuilder executeUserLinkUpdates:[NSArray arrayWithObject:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], [[NSNumber alloc] initWithInt:link], nil]]];
+                
+                [TGDatabaseInstance() deleteRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], nil]];
+                
+                [TGDatabaseInstance() storeFutureActions:[[NSArray alloc] initWithObjects:[[TGRemoveContactFutureAction alloc] initWithUid:uid], nil]];
+            }
+            
+            [TGContactListRequestBuilder dispatchNewContactList];
+            [TGContactListRequestBuilder dispatchNewPhonebook];
+            
+            [self completeAction:true];
+            
+            [[TGSynchronizeContactsManager instance] addressBookChanged];
+            
+            if (removedMainPhone && uid != 0)
+            {
+                [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(removeAndExport)" options:[[NSDictionary alloc] initWithObjectsAndKeys:[[NSNumber alloc] initWithBool:false], @"signalSynchronizationCompleted", nil] watcher:TGTelegraphInstance];
+            }
+        }];
+    });
+}
+
+- (void)processRemoveContact:(int64_t)uid byNativeId:(int)nativeId
+{
+    TGUser *user = [TGDatabaseInstance() loadUser:uid];
+    if (user == nil || nativeId == 0)
+    {
+        [self completeAction:true];
+        return;
+    }
+    
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        if (addressBook == NULL || denied)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                TGUser *newUser = [user copy];
+                newUser.phonebookFirstName = nil;
+                newUser.phonebookLastName = nil;
+                [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+                
+                int link = [TGDatabaseInstance() loadUserLink:uid outdated:NULL];
+                link &= ~TGUserLinkMyContact;
+                if (link & TGUserLinkForeignMutual)
+                    link &= ~TGUserLinkForeignMutual;
+                link |= TGUserLinkForeignRequested;
+                link |= TGUserLinkMyRequested;
+                link |= TGUserLinkForeignHasPhone;
+                [TGUserDataRequestBuilder executeUserLinkUpdates:[NSArray arrayWithObject:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], [[NSNumber alloc] initWithInt:link], nil]]];
+                
+                [TGDatabaseInstance() deleteRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], nil]];
+                [TGDatabaseInstance() replacePhonebookContact:nativeId phonebookContact:nil generateContactBindings:true];
+                [TGContactListRequestBuilder dispatchNewContactList];
+                [TGContactListRequestBuilder dispatchNewPhonebook];
+                
+                [self completeAction:true];
+            }];
+            
+            return;
+        }
+        
+        ABRecordRef person = ABAddressBookGetPersonWithRecordID(addressBook, nativeId);
+        
+        if (person != NULL)
+        {
+            ABAddressBookRemoveRecord(addressBook, person, NULL);
+            ABAddressBookSave(addressBook, NULL);
+        }
+        
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            TGUser *newUser = [user copy];
+            newUser.phonebookFirstName = nil;
+            newUser.phonebookLastName = nil;
+            [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+            
+            int link = [TGDatabaseInstance() loadUserLink:uid outdated:NULL];
+            link &= ~TGUserLinkMyContact;
+            if (link & TGUserLinkForeignMutual)
+                link &= ~TGUserLinkForeignMutual;
+            link |= TGUserLinkForeignRequested;
+            link |= TGUserLinkMyRequested;
+            link |= TGUserLinkForeignHasPhone;
+            [TGUserDataRequestBuilder executeUserLinkUpdates:[NSArray arrayWithObject:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], [[NSNumber alloc] initWithInt:link], nil]]];
+            
+            [TGDatabaseInstance() deleteRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], nil]];
+            [TGDatabaseInstance() replacePhonebookContact:nativeId phonebookContact:nil generateContactBindings:true];
+            
+            [TGContactListRequestBuilder dispatchNewContactList];
+            [TGContactListRequestBuilder dispatchNewPhonebook];
+            
+            [TGDatabaseInstance() storeFutureActions:[[NSArray alloc] initWithObjects:[[TGRemoveContactFutureAction alloc] initWithUid:uid], nil]];
+            [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(removeAndExport)" options:[[NSDictionary alloc] initWithObjectsAndKeys:[[NSNumber alloc] initWithBool:false], @"signalSynchronizationCompleted", nil] watcher:TGTelegraphInstance];
+            
+            [self completeAction:true];
+            
+            [[TGSynchronizeContactsManager instance] addressBookChanged];
+        }];
+    });
+}
+
+- (void)processRemoveContact:(int64_t)uid byPhoneId:(int)phoneIdToRemove
+{
+    TGUser *user = [TGDatabaseInstance() loadUser:uid];
+    if (user == nil || phoneIdToRemove == 0)
+    {
+        [self completeAction:true];
+        return;
+    }
+    
+    CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+    {
+        if (addressBook == NULL || denied)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                TGUser *newUser = [user copy];
+                newUser.phonebookFirstName = nil;
+                newUser.phonebookLastName = nil;
+                [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+                [TGDatabaseInstance() deleteRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], nil]];
+                [TGDatabaseInstance() deleteContactBinding:phoneIdToRemove];
+                [TGContactListRequestBuilder dispatchNewContactList];
+                [TGContactListRequestBuilder dispatchNewPhonebook];
+                
+                [self completeAction:true];
+            }];
+            
+            return;
+        }
+        
+        CFArrayRef people = ABAddressBookCopyArrayOfAllPeople(addressBook);
+        int count = (int)CFArrayGetCount(people);
+        
+        std::set<int> removeExportIdsSet;
+        
+        bool foundPerson = false;
+        
+        for (CFIndex i = 0; i < count; i++)
+        {
+            ABRecordRef person = CFArrayGetValueAtIndex(people, i);
+            
+            ABMultiValueRef phones = ABRecordCopyValue(person, kABPersonPhoneProperty);
+            if (phones == NULL)
+                continue;
+            
+            int phoneCount = (int)ABMultiValueGetCount(phones);
+            for (CFIndex j = 0; j < phoneCount; j++)
+            {
+                NSString *phone = (__bridge_transfer NSString *)ABMultiValueCopyValueAtIndex(phones, j);
+                int phoneId = phoneMatchHash(phone);
+                
+                if (phoneId == phoneIdToRemove)
+                {
+                    foundPerson = true;
+                    
+                    NSString *firstName = (__bridge_transfer NSString *)ABRecordCopyValue(person, kABPersonFirstNameProperty);
+                    NSString *lastName = (__bridge_transfer NSString *)ABRecordCopyValue(person, kABPersonLastNameProperty);
+                    
+                    if (firstName == nil)
+                        firstName = @"";
+                    if (lastName == nil)
+                        lastName = @"";
+                    
+                    if (firstName.length == 0 && lastName.length == 0)
+                    {
+                        lastName = (__bridge_transfer NSString *)ABRecordCopyValue(person, kABPersonOrganizationProperty);
+                        if (lastName == nil)
+                            lastName = @"";
+                    }
+                    
+                    if (lastName.length == 0)
+                    {
+                        lastName = firstName;
+                        firstName = @"";
+                    }
+                    
+                    NSString *cleanPhone = [TGPhoneUtils cleanPhone:phone];
+                    removeExportIdsSet.insert(murMurHash32([[NSString alloc] initWithFormat:@"%@%@%@", firstName, lastName, cleanPhone]));
+                    
+                    if (phoneCount == 1)
+                    {
+                        ABAddressBookRemoveRecord(addressBook, person, NULL);
+                    }
+                    else
+                    {
+                        ABMultiValueRef currentPhones = ABRecordCopyValue(person, kABPersonPhoneProperty);
+                        ABMutableMultiValueRef mutablePhones = ABMultiValueCreateMutableCopy(currentPhones);
+                        CFRelease(currentPhones);
+                        
+                        int phoneCount = (int)ABMultiValueGetCount(mutablePhones);
+                        for (CFIndex j = 0; j < phoneCount; j++)
+                        {
+                            NSString *phone = (__bridge_transfer NSString *)ABMultiValueCopyValueAtIndex(phones, j);
+                            
+                            if (phone.length != 0 && phoneMatchHash(phone) == phoneId)
+                            {
+                                ABMultiValueRemoveValueAndLabelAtIndex(mutablePhones, j);
+                            }
+                        }
+                        
+                        ABRecordSetValue(person, kABPersonPhoneProperty, mutablePhones, NULL);
+                        CFRelease(mutablePhones);
+                    }
+                    
+                    break;
+                }
+            }
+            if (phones != NULL)
+                CFRelease(phones);
+        }
+        
+        if (foundPerson)
+        {
+            NSData *phonebookData = [TGDatabaseInstance() customProperty:@"phonebookState"];
+            NSMutableData *newPhonebookData = [[NSMutableData alloc] initWithData:phonebookData];
+            uint8_t *phonebookStateBytes = (uint8_t *)newPhonebookData.mutableBytes;
+            int phonebookStateLength = (int)newPhonebookData.length;
+            for (int i = 0; i < phonebookStateLength; i += 4)
+            {
+                int contactId = *((int *)(phonebookStateBytes + i));
+                if (contactId == phoneIdToRemove)
+                {
+                    *((int *)(phonebookStateBytes + i)) = 0;
+                    
+                    break;
+                }
+            }
+            [TGDatabaseInstance() setCustomProperty:@"phonebookState" value:newPhonebookData];
+            
+            if (!removeExportIdsSet.empty())
+            {
+                NSData *exportData = [TGDatabaseInstance() customProperty:@"exportState"];
+                NSMutableData *newExportData = [[NSMutableData alloc] initWithData:exportData];
+                uint8_t *exportStateBytes = (uint8_t *)newExportData.mutableBytes;
+                int exportStateLength = (int)newExportData.length;
+                for (int i = 0; i < exportStateLength; i += 4)
+                {
+                    int exportId = *((int *)(exportStateBytes + i));
+                    if (removeExportIdsSet.find(exportId) != removeExportIdsSet.end())
+                    {
+                        *((int *)(exportStateBytes + i)) = 0;
+                        
+                        break;
+                    }
+                }
+                [TGDatabaseInstance() setCustomProperty:@"exportState" value:newExportData];
+            }
+        }
+        
+        if (people != NULL)
+            CFRelease(people);
+        
+        ABAddressBookSave(addressBook, NULL);
+        
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            TGUser *newUser = [user copy];
+            newUser.phonebookFirstName = nil;
+            newUser.phonebookLastName = nil;
+            
+            [TGUserDataRequestBuilder executeUserObjectsUpdate:[[NSArray alloc] initWithObjects:newUser, nil]];
+            TGPhonebookContact *phonebookContact = [TGDatabaseInstance() phonebookContactByPhoneId:phoneIdToRemove];
+            if (phonebookContact != nil && [phonebookContact containsPhoneId:phoneIdToRemove])
+            {
+                if (phonebookContact.phoneNumbers.count <= 1)
+                    [TGDatabaseInstance() replacePhonebookContact:phonebookContact.nativeId phonebookContact:nil generateContactBindings:true];
+                else
+                {
+                    phonebookContact = [phonebookContact copy];
+                    NSMutableArray *newPhoneNumbers = [[NSMutableArray alloc] init];
+                    for (TGPhoneNumber *phoneNumber in phonebookContact.phoneNumbers)
+                    {
+                        if (phoneNumber.phoneId != phoneIdToRemove)
+                            [newPhoneNumbers addObject:phoneNumber];
+                    }
+                    phonebookContact.phoneNumbers = newPhoneNumbers;
+                    [TGDatabaseInstance() replacePhonebookContact:phonebookContact.nativeId phonebookContact:phonebookContact generateContactBindings:true];
+                }
+            }
+            else
+            {
+                [TGDatabaseInstance() deleteContactBinding:phoneIdToRemove];
+            }
+            
+            [TGDatabaseInstance() deleteRemoteContactUids:[[NSArray alloc] initWithObjects:[[NSNumber alloc] initWithLongLong:uid], nil]];
+            
+            [TGContactListRequestBuilder dispatchNewContactList];
+            [TGContactListRequestBuilder dispatchNewPhonebook];
+            
+            [self completeAction:true];
+        }];
+    });
+}
+
+#pragma mark -
+
+- (TGPhonebookContact *)importContactToPhonebook:(ABAddressBookRef)addressBook user:(TGUser *)user
+{
+    if (addressBook == NULL)
+        return nil;
+    
+    NSString *mobileLabel = localizedMobilePhoneLabel();
+    
+    TGPhonebookContact *phonebookContact = [[TGPhonebookContact alloc] init];
+    phonebookContact.firstName = user.firstName;
+    phonebookContact.lastName = user.lastName;
+    phonebookContact.phoneNumbers = [[NSArray alloc] initWithObjects:[[TGPhoneNumber alloc] initWithLabel:mobileLabel number:user.phoneNumber], nil];
+    
+    CFErrorRef error = NULL;
+    ABRecordRef newPerson = ABPersonCreate();
+    
+    if (user.firstName != nil)
+        ABRecordSetValue(newPerson, kABPersonFirstNameProperty, (__bridge CFTypeRef)(user.firstName), &error);
+    if (user.lastName != nil)
+        ABRecordSetValue(newPerson, kABPersonLastNameProperty, (__bridge CFTypeRef)(user.lastName), &error);
+    
+    ABMutableMultiValueRef multiPhone = ABMultiValueCreateMutable(kABMultiStringPropertyType);
+    if (user.phoneNumber != nil)
+    {
+        NSString *formattedNumber = [user.phoneNumber hasPrefix:@"+"] ? user.phoneNumber : [NSString stringWithFormat:@"+%@", user.phoneNumber];
+        ABMultiValueAddValueAndLabel(multiPhone, (__bridge CFTypeRef)(formattedNumber), kABPersonPhoneMobileLabel, NULL);
+    }
+    ABRecordSetValue(newPerson, kABPersonPhoneProperty, multiPhone, nil);
+    CFRelease(multiPhone);
+    
+    ABAddressBookAddRecord(addressBook, newPerson, &error);
+    
+    phonebookContact.nativeId = ABRecordGetRecordID(newPerson);
+    
+    CFRelease(newPerson);
+    
+    if (error == NULL)
+        return phonebookContact;
+    else
+    {
+        CFStringRef errorDesc = CFErrorCopyDescription(error);
+        CFRelease(errorDesc);
+    }
+    
+    return nil;
+}
+
+#pragma mark -
+
+- (void)importContacts:(void (^)(bool imported))completion
+{
+    [[TGSynchronizeContactsManager instance] dispatchAfterStartupLocalSynchronization:^
+    {
+        CreateAddressBookAsync(^(ABAddressBookRef addressBook, bool denied)
+        {
+            if (addressBook == NULL || denied)
+            {
+                if (completion)
+                    completion(false);
+                return;
+            }
+        
+        
+        bool imported = false;
+        NSArray *contactUsers = [TGDatabaseInstance() loadContactUsers];
+        NSArray *contactBindings = [TGDatabaseInstance() contactBindings];
+        NSMutableArray *updatedContactBindings = [[NSMutableArray alloc] initWithArray:contactBindings == nil ? @[] : contactBindings];
+        NSMutableSet *boundPhoneIds = [[NSMutableSet alloc] initWithCapacity:contactBindings.count];
+        for (TGContactBinding *binding in contactBindings)
+            [boundPhoneIds addObject:[NSNumber numberWithInt:binding.phoneId]];
+
+        NSArray *existingPhonebookContacts = [TGDatabaseInstance() loadPhonebookContacts:true];
+        NSMutableArray *phonebookContacts = [[NSMutableArray alloc] initWithArray:existingPhonebookContacts == nil ? @[] : existingPhonebookContacts];
+        NSMutableSet *phonebookPhoneIds = [[NSMutableSet alloc] init];
+        for (TGPhonebookContact *phonebookContact in phonebookContacts)
+        {
+            for (TGPhoneNumber *phoneNumber in phonebookContact.phoneNumbers)
+            {
+                if (phoneNumber.number.length != 0)
+                    [phonebookPhoneIds addObject:[NSNumber numberWithInt:phoneNumber.phoneId]];
+            }
+        }
+        NSUInteger importedCount = 0;
+        
+        for (TGUser *user in contactUsers)
+        {
+            NSNumber *contactId = [NSNumber numberWithInt:user.contactId];
+            if (user.phoneNumber.length != 0 && ![boundPhoneIds containsObject:contactId] && ![phonebookPhoneIds containsObject:contactId])
+            {
+                if (![[TGSynchronizeContactsManager instance] isContactAdditionScheduled:user.uid])
+                {
+                    TGPhonebookContact *phonebookContact = [self importContactToPhonebook:addressBook user:user];
+                    if (phonebookContact != nil)
+                    {
+                        TGContactBinding *binding = [[TGContactBinding alloc] init];
+                        binding.phoneId = user.contactId;
+                        binding.firstName = user.firstName ?: @"";
+                        binding.lastName = user.lastName ?: @"";
+                        binding.phoneNumber = [TGPhoneUtils cleanPhone:user.phoneNumber];
+                        [updatedContactBindings addObject:binding];
+                        [phonebookContacts addObject:phonebookContact];
+                        [boundPhoneIds addObject:contactId];
+                        [phonebookPhoneIds addObject:contactId];
+                        imported = true;
+                        importedCount++;
+                    }
+                }
+            }
+        }
+        
+        if (imported)
+        {
+            CFErrorRef saveError = NULL;
+            bool saved = ABAddressBookSave(addressBook, &saveError);
+            if (saved)
+            {
+                [TGDatabaseInstance() replaceContactBindings:updatedContactBindings];
+                [TGDatabaseInstance() replacePhonebookContacts:phonebookContacts];
+                CFArrayRef updatedPeople = ABAddressBookCopyArrayOfAllPeople(addressBook);
+                TGStoreAddressBookSnapshot(TGAddressBookFingerprint(updatedPeople), updatedContactBindings, phonebookContacts);
+                if (updatedPeople != NULL)
+                    CFRelease(updatedPeople);
+            }
+            else
+                imported = false;
+
+            if (saveError != NULL)
+            {
+                CFStringRef errorDescription = CFErrorCopyDescription(saveError);
+                CFRelease(errorDescription);
+                CFRelease(saveError);
+            }
+            
+        }
+
+        
+            if (completion)
+                completion(imported);
+        });
+    }];
+}
+
+#pragma mark -
+
+- (void)contactIdsRequestSuccess:(NSArray *)contactIds
+{
+    std::vector<int64_t> currentUidsVector;
+    [TGDatabaseInstance() loadRemoteContactUids:currentUidsVector];
+    std::set<int64_t> currentUids;
+    for (std::vector<int64_t>::iterator it = currentUidsVector.begin(); it != currentUidsVector.end(); it++)
+    {
+        currentUids.insert(*it);
+    }
+    
+    std::set<int64_t> remoteUids;
+    for (NSNumber *nUid in contactIds)
+    {
+        remoteUids.insert([nUid longLongValue]);
+    }
+    
+    if (remoteUids != currentUids)
+    {
+        _hadRemoteContacts = false;
+        self.cancelToken = [TGTelegraphInstance doRequestContactList:0
+                            
+                            
+                                                               actor:self];
+    }
+    else
+    {
+        [TGContactListRequestBuilder dispatchNewContactList];
+        [self importContacts:^(bool imported)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                if (imported)
+                {
+                    [TGContactListRequestBuilder dispatchNewContactList];
+                    [TGContactListRequestBuilder dispatchNewPhonebook];
+                }
+                
+                [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+                
+                [self completeAction:true];
+            }];
+        }];
+    }
+}
+
+- (void)contactIdsRequestFailed
+{
+    [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+    
+    [self completeAction:false];
+}
+
+#pragma mark -
+
+- (void)contactListRequestSuccess:(TLcontacts_Contacts *)result
+{
+    if ([result isKindOfClass:[TLcontacts_Contacts$contacts_contacts class]])
+    {
+        
+        TLcontacts_Contacts$contacts_contacts *concreteContacts = (TLcontacts_Contacts$contacts_contacts *)result;
+        
+        [TGUserDataRequestBuilder executeUserDataUpdate:concreteContacts.users];
+        NSMutableArray *contactUids = [[NSMutableArray alloc] init];
+        
+        for (TLContact *contact in concreteContacts.contacts)
+        {
+            if (contact.user_id != 0)
+                [contactUids addObject:[[NSNumber alloc] initWithLongLong:contact.user_id]];
+        }
+        
+        [[TGSynchronizeContactsManager instance] dispatchOnAddressBookQueue:^
+        {
+            int32_t count = ((TLcontacts_Contacts$contacts_contacts *)result).saved_count;
+            [TGDatabaseInstance() setCustomProperty:@"contactRemoteNonRegisteredCount" value:[NSData dataWithBytes:&count length:4]];
+            [TGDatabaseInstance() replaceRemoteContactUids:contactUids];
+            [TGContactListRequestBuilder dispatchNewContactList];
+            
+            [self importContacts:^(__unused bool imported)
+            {
+                [ActionStageInstance() dispatchOnStageQueue:^
+                {
+                    {
+                        [TGContactListRequestBuilder dispatchNewContactList];
+                        [TGContactListRequestBuilder dispatchNewPhonebook];
+                    }
+                    
+                    [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+                    
+                    if (!TGTelegraphInstance.clientIsActivated && contactUids.count != 0)
+                    {
+                        TGTelegraphInstance.clientIsActivated = true;
+                        [TGAppDelegateInstance saveSettings];
+                    }
+                    
+                    [self completeAction:true];
+                }];
+            }];
+        }];
+    }
+    else
+    {
+        [TGContactListRequestBuilder dispatchNewContactList];
+        [[TGSynchronizeContactsManager instance] dispatchOnAddressBookQueue:^
+        {
+            [self importContacts:^(__unused bool imported)
+            {
+                [ActionStageInstance() dispatchOnStageQueue:^
+                {
+                    [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+                    
+                    if (_hadRemoteContacts && !TGTelegraphInstance.clientIsActivated)
+                    {
+                        TGTelegraphInstance.clientIsActivated = true;
+                        [TGAppDelegateInstance saveSettings];
+                    }
+                    
+                    [self completeAction:true];
+                }];
+            }];
+        }];
+    }
+}
+
+- (void)contactListRequestFailed
+{
+    [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+    
+    [self completeAction:false];
+}
+
+- (void)completeAction:(bool)success
+{
+    if (_signalSynchronizationCompleted)
+        [[TGSynchronizeContactsManager instance] setContactsSynchronizationStatus:false];
+    
+    if ([self.path hasSuffix:@"removeAndExport)"])
+    {
+        [[TGSynchronizeContactsManager instance] setRemoveAndExportActionsRunning:false];
+        
+        if (!_skipRemoteReload && [ActionStageInstance() executingActorWithPath:@"/tg/synchronizeContacts/(loadRemote)"] == nil)
+            [ActionStageInstance() requestActor:@"/tg/synchronizeContacts/(loadRemote)" options:nil watcher:TGTelegraphInstance];
+    }
+    
+    if (success)
+        [ActionStageInstance() actionCompleted:self.path result:nil];
+    else
+        [ActionStageInstance() actionFailed:self.path reason:-1];
+}
+
+@end

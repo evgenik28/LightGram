@@ -1,0 +1,95 @@
+#import "TLRPCchannels_reportSpam.h"
+
+#import "../NSInputStream+TL.h"
+#import "../NSOutputStream+TL.h"
+
+#import "TLInputChannel.h"
+#import "TLInputPeer.h"
+
+@implementation TLRPCchannels_reportSpam
+
+
+- (Class)responseClass
+{
+    return [NSNumber class];
+}
+
+- (int)impliedResponseSignature
+{
+    return 0;
+}
+
+- (int)layerVersion
+{
+    return 228;
+}
+
+- (int32_t)TLconstructorSignature
+{
+    return 0;
+}
+
+- (int32_t)TLconstructorName
+{
+    return 0;
+}
+
+- (id<TLObject>)TLbuildFromMetaObject:(std::tr1::shared_ptr<TLMetaObject>)__unused metaObject
+{
+    return nil;
+}
+
+- (void)TLfillFieldsWithValues:(std::map<int32_t, TLConstructedValue> *)__unused values
+{
+}
+
+
+@end
+
+@implementation TLRPCchannels_reportSpam$channels_reportSpam : TLRPCchannels_reportSpam
+
+
+- (int32_t)TLconstructorSignature
+{
+    return (int32_t)0xf44a8315;
+}
+
+- (int32_t)TLconstructorName
+{
+    return (int32_t)0x25a5d9e7;
+}
+
+- (id<TLObject>)TLbuildFromMetaObject:(std::tr1::shared_ptr<TLMetaObject>)metaObject
+{
+    TLRPCchannels_reportSpam$channels_reportSpam *object = [[TLRPCchannels_reportSpam$channels_reportSpam alloc] init];
+    object.channel = metaObject->getObject((int32_t)0xe11f3d41);
+    object.participant = metaObject->getObject((int32_t)0x837816d4);
+    object.n_id = metaObject->getArray((int32_t)0x7a5601fb);
+    return object;
+}
+
+- (void)TLfillFieldsWithValues:(std::map<int32_t, TLConstructedValue> *)values
+{
+    {
+        TLConstructedValue value;
+        value.type = TLConstructedValueTypeObject;
+        value.nativeObject = self.channel;
+        values->insert(std::pair<int32_t, TLConstructedValue>((int32_t)0xe11f3d41, value));
+    }
+    {
+        TLConstructedValue value;
+        value.type = TLConstructedValueTypeObject;
+        value.nativeObject = self.participant;
+        values->insert(std::pair<int32_t, TLConstructedValue>((int32_t)0x837816d4, value));
+    }
+    {
+        TLConstructedValue value;
+        value.type = TLConstructedValueTypeVector;
+        value.nativeObject = self.n_id;
+        values->insert(std::pair<int32_t, TLConstructedValue>((int32_t)0x7a5601fb, value));
+    }
+}
+
+
+@end
+

@@ -1,0 +1,19 @@
+#import <Foundation/Foundation.h>
+
+#import "../submodules/LegacyComponents/SSignalKitCompat/SSignalKit.h"
+
+#import <LegacyDatabase/TGShareContext.h>
+
+@interface TGEncryptedShareContext : NSObject
+
+@property (nonatomic, readonly) bool simplePassword;
+@property (nonatomic, readonly) bool allowTouchId;
+@property (nonatomic, copy, readonly) bool (^verifyPassword)(NSString *);
+
+@end
+
+@interface TGShareContextSignal : NSObject
+
++ (SSignal *)shareContext;
+
+@end

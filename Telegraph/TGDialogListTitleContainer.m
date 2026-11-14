@@ -1,0 +1,45 @@
+#import "TGDialogListTitleContainer.h"
+#import "../LightGramPlatform/LGPlatformUIKit.h"
+
+@implementation TGDialogListTitleContainer
+
+- (instancetype)initWithFrame:(CGRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self != nil)
+    {
+        [self addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapGesture:)]];   
+    }
+    return self;
+}
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)__unused event
+{
+    if (CGRectContainsPoint(CGRectInset(self.bounds, -70.0f, -44.0f), point))
+        return self;
+    return nil;
+}
+
+- (CGSize)intrinsicContentSize
+{
+    return CGSizeMake(1, 1);
+}
+
+- (bool)translatesAutoresizingMaskIntoConstraints
+{
+    if (iosMajorVersion() >= 11)
+        return false;
+    
+    return LGPlatformSuperclassViewTranslatesAutoresizingMaskIntoConstraints(self, [TGDialogListTitleContainer class]);
+}
+
+- (void)tapGesture:(UITapGestureRecognizer *)recognizer
+{
+    if (recognizer.state == UIGestureRecognizerStateEnded)
+    {
+        if (_tappped)
+            _tappped();
+    }
+}
+
+@end

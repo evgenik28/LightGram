@@ -1,0 +1,141 @@
+#import "TGPushActionsRequestBuilder.h"
+
+#import "TGAppDelegate.h"
+
+#import "TGTelegraph.h"
+#import "TGAccountSignals.h"
+
+static NSString *devicePushToken = nil;
+
+@interface TGPushActionsRequestBuilder () <TGDeviceTokenListener>
+
+@end
+
+@implementation TGPushActionsRequestBuilder
+
++ (NSString *)genericPath
+{
+    return @"/tg/service/settings/push/@";
+}
+
+- (NSString *)og_compat_takeDeviceToken
+{
+    NSString *taken = devicePushToken;
+    devicePushToken = nil;
+    return taken;
+}
+
++ (void)clearCachedDevicePushToken
+{
+    devicePushToken = nil;
+}
+
+- (void)execute:(NSDictionary *)__unused options
+{
+    NSRange range;
+    range.location = [@"/tg/service/settings/push/(" length];
+    range.length = [self.path length] - 1 - range.location;
+    NSString *action = [self.path substringWithRange:range];
+
+    bool apnsEnabled = OGAPNsNotificationsEnabled();
+    if ([action isEqualToString:@"subscribe"] && !apnsEnabled)
+    {
+        TGDispatchOnMainThread(^
+        {
+            [TGAppDelegateInstance ios6RegisterLocalNotificationSettings];
+        });
+        
+        NSString *staleToken = [self og_compat_takeDeviceToken];
+        if (staleToken.length == 0)
+            [ActionStageInstance() actionCompleted:self.path result:nil];
+        else
+            self.cancelToken = [TGTelegraphInstance doUpdatePushSubscription:false deviceToken:staleToken requestBuilder:self];
+        return;
+    }
+
+    if ([action isEqualToString:@"subscribe"] && [TGAppDelegateInstance usesPushKitNotifications])
+    {
+        TGDispatchOnMainThread(^
+        {
+            [TGAppDelegateInstance requestDeviceToken:nil];
+        });
+        [ActionStageInstance() actionCompleted:self.path result:nil];
+        return;
+    }
+
+    if ([action isEqualToString:@"unsubscribe"] && [TGAppDelegateInstance usesPushKitNotifications])
+    {
+        NSString *voipToken = [[NSUserDefaults standardUserDefaults] stringForKey:@"LightGram.PushKit.VoIPToken"];
+        if (voipToken.length == 0)
+        {
+            [ActionStageInstance() actionCompleted:self.path result:nil];
+            return;
+        }
+        self.cancelToken = [[TGAccountSignals unregisterDeviceToken:voipToken voip:true] startWithNext:^(__unused id result)
+        {
+            [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"LightGram.PushKit.VoIPToken"];
+            [ActionStageInstance() actionCompleted:self.path result:nil];
+        } error:^(__unused id error)
+        {
+            [ActionStageInstance() actionFailed:self.path reason:-1];
+        } completed:nil];
+        return;
+    }
+
+    if ([action isEqualToString:@"unsubscribe"] && devicePushToken == nil)
+    {
+        [ActionStageInstance() actionCompleted:self.path result:nil];
+        return;
+    }
+
+    if (devicePushToken == nil)
+    {
+        TGDispatchOnMainThread(^
+        {
+            [TGAppDelegateInstance requestDeviceToken:self];
+        });
+        
+        [ActionStageInstance() actionFailed:self.path reason:-1];
+        
+        return;
+    }
+    
+    if ([action isEqualToString:@"subscribe"])
+    {
+        self.cancelToken = [TGTelegraphInstance doUpdatePushSubscription:true deviceToken:devicePushToken requestBuilder:self];
+    }
+    else if ([action isEqualToString:@"unsubscribe"])
+    {
+        self.cancelToken = [TGTelegraphInstance doUpdatePushSubscription:false deviceToken:[self og_compat_takeDeviceToken] requestBuilder:self];
+    }
+    else
+    {
+        [ActionStageInstance() actionFailed:self.path reason:-1];
+    }
+}
+
+- (void)deviceTokenRequestCompleted:(NSString *)deviceToken
+{
+    if (deviceToken != nil)
+    {
+        devicePushToken = deviceToken;
+        [self execute:nil];
+    }
+    else
+    {
+        [self pushSubscriptionUpdateFailed];
+    }
+}
+
+- (void)pushSubscriptionUpdateSuccess
+{
+    [ActionStageInstance() actionCompleted:self.path result:nil];
+}
+
+- (void)pushSubscriptionUpdateFailed
+{
+    TGLog(@"PUSH subscription failure path=%@", self.path);
+    [ActionStageInstance() actionFailed:self.path reason:-1];
+}
+
+@end

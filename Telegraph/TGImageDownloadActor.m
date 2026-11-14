@@ -1,0 +1,1399 @@
+#import "TGImageDownloadActor.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import "TGAppDelegate.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/ActionStage.h"
+#import "../submodules/LegacyComponents/LegacyComponents/SGraphObjectNode.h"
+#import "../submodules/LegacyComponents/LegacyComponents/TGRemoteImageView.h"
+#import "../submodules/LegacyComponents/LegacyComponents/TGLetteredAvatarView.h"
+
+#import "TGImageInfo+Telegraph.h"
+#import "TGTelegraph.h"
+#import "TGTelegraphProtocols.h"
+
+#import "TGFileDownloadActor.h"
+
+#import "TGGenericModernConversationCompanion.h"
+
+#import "TGDownloadManager.h"
+
+#import "TGDatabase.h"
+#import "TGCommon.h"
+
+#import "TGInterfaceAssets.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/TGImageManager.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/TGImagePickerController.h"
+#import "../submodules/LegacyComponents/LegacyComponents/TGMediaAsset.h"
+
+#import "TGTelegramNetworking.h"
+
+#import "../LightGramPlatform/LGPlatformDispatch.h"
+#import "../LightGramPlatform/LGPlatformGraphics.h"
+#import "../LightGramPlatform/LGPlatformMedia.h"
+#import "../LightGramRuntime/LGRuntime.h"
+
+static CGSize LightGramImageDecodeSize(NSData *data, NSString *processorName, NSDictionary *userProperties);
+
+static UIImage *TGImageDownloadVideoPoster(NSData *data, NSString *path, CGSize maximumSize, NSInteger priority, bool (^isCancelled)(void))
+{
+    if (data.length < 12 || memcmp((const uint8_t *)data.bytes + 4, "ftyp", 4) != 0)
+        return nil;
+    if (maximumSize.width <= 0.0f || maximumSize.height <= 0.0f)
+        maximumSize = CGSizeMake(1024, 1024);
+    return LGPlatformDecodeImageWithBlock(^UIImage *
+    {
+        return LGPlatformVideoThumbnailAtURL([NSURL fileURLWithPath:path], 0.0, maximumSize);
+    }, maximumSize, priority, isCancelled);
+}
+
+static bool TGImageDownloadUsesPeerAvatarPipeline(void)
+{
+    static int value = -1;
+    if (value < 0)
+        value = (LGPlatformUsesConstrainedBackgroundExecution() || cpuCoreCount() <= 1) ? 1 : 0;
+    return value != 0;
+}
+
+static bool LightGramPeerAvatarProcessorSize(NSString *name, CGSize *size, bool *circle)
+{
+    if (name.length == 0)
+        return false;
+    NSString *value = nil;
+    bool isCircle = false;
+    if ([name hasPrefix:@"circle:"])
+    {
+        value = [name substringFromIndex:7];
+        isCircle = true;
+    }
+    else if ([name hasPrefix:@"scale:"])
+        value = [name substringFromIndex:6];
+    else
+        return false;
+
+    NSRange separator = [value rangeOfString:@"x"];
+    if (separator.location == NSNotFound)
+        return false;
+    int width = [[value substringToIndex:separator.location] intValue];
+    int height = [[value substringFromIndex:separator.location + 1] intValue];
+    if (width <= 0 || height <= 0 || width > 256 || height > 256)
+        return false;
+    if (size != NULL)
+        *size = CGSizeMake(width, height);
+    if (circle != NULL)
+        *circle = isCircle;
+    return true;
+}
+
+static CGSize LightGramImageDecodeSize(NSData *data, NSString *processorName, NSDictionary *userProperties)
+{
+    NSDictionary *thumbnailContext = [userProperties objectForKey:@"thumbnailContext"];
+    if ([thumbnailContext isKindOfClass:[NSDictionary class]])
+    {
+        CGFloat width = [thumbnailContext[@"renderWidth"] floatValue] * TGScreenScaling();
+        CGFloat height = [thumbnailContext[@"renderHeight"] floatValue] * TGScreenScaling();
+        if (width > 0.0f && height > 0.0f)
+        {
+            CGSize sourceSize = LGPlatformImagePixelSizeFromData(data);
+            if (sourceSize.width <= 0.0f || sourceSize.height <= 0.0f)
+                sourceSize = CGSizeMake([thumbnailContext[@"width"] floatValue], [thumbnailContext[@"height"] floatValue]);
+            if (sourceSize.width > 0.0f && sourceSize.height > 0.0f)
+            {
+                CGFloat scale = MIN(1.0f, MAX(width / sourceSize.width, height / sourceSize.height));
+                CGFloat maximumSide = MIN(4096.0f, ceilf(MAX(sourceSize.width, sourceSize.height) * scale));
+                return CGSizeMake(maximumSide, maximumSide);
+            }
+            return CGSizeMake(MIN(4096.0f, width), MIN(4096.0f, height));
+        }
+    }
+    CGSize targetSize = CGSizeZero;
+    if (LightGramPeerAvatarProcessorSize(processorName, &targetSize, NULL))
+    {
+        CGSize sourceSize = LGPlatformImagePixelSizeFromData(data);
+        if (sourceSize.width > 0.0f && sourceSize.height > 0.0f)
+        {
+            CGFloat scale = MIN(1.0f, MAX(targetSize.width * TGScreenScaling() / sourceSize.width, targetSize.height * TGScreenScaling() / sourceSize.height));
+            CGFloat maximumSide = ceilf(MAX(sourceSize.width, sourceSize.height) * scale);
+            return CGSizeMake(maximumSide, maximumSide);
+        }
+    }
+    return [processorName isEqualToString:@"maybeScale"] ? CGSizeMake(1024.0f, 1024.0f) : CGSizeZero;
+}
+
+static UIImage *LightGramProcessPeerAvatar(UIImage *source, NSString *processorName)
+{
+    if (source == nil || source.CGImage == NULL)
+        return nil;
+    CGSize targetSize = CGSizeZero;
+    bool circle = false;
+    if (!LightGramPeerAvatarProcessorSize(processorName, &targetSize, &circle))
+        return nil;
+
+    if (circle)
+        return TGScaleAndRoundCornersWithOffsetAndFlags(source, targetSize, CGPointZero, targetSize, (int)targetSize.width / 2, nil, false, nil, TGScaleImageScaleSharper);
+    return TGScaleImage(source, targetSize);
+}
+
+static UIImage *LightGramApplyImageProcessor(UIImage *source, TGImageProcessor processor, NSString *processorName, NSString *url)
+{
+    UIImage *result = nil;
+    if ([url hasPrefix:@"peerphoto:"] && TGImageDownloadUsesPeerAvatarPipeline())
+        result = LightGramProcessPeerAvatar(source, processorName);
+    if (result == nil)
+        result = processor != nil ? processor(source) : source;
+    if (!LGPlatformUsesConstrainedBackgroundExecution() && ([processorName isEqualToString:@"scale:50x50"] || [processorName isEqualToString:@"scale:52x52"]))
+    {
+        CGFloat size = [processorName isEqualToString:@"scale:50x50"] ? 50.0f : 52.0f;
+        [TGLetteredAvatarView prewarmImage:result cornerRadius:size == 50.0f ? 8.0f : 7.0f boundsSize:CGSizeMake(size, size)];
+    }
+    return result;
+}
+
+static UIImage *LightGramPreloadDownloadedImage(UIImage *source, NSInteger priority, bool (^isCancelled)(void))
+{
+    if (source == nil)
+        return nil;
+    return LGPlatformDecodeImageWithBlock(^UIImage *
+    {
+        return [source preloadedImage];
+    }, source.pixelSize, priority, isCancelled);
+}
+
+static NSMutableDictionary *urlRewrites()
+{
+    static NSMutableDictionary *dict = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        dict = [[NSMutableDictionary alloc] init];
+    });
+    return dict;
+}
+
+static NSMutableDictionary *serverAssetData()
+{
+    static NSMutableDictionary *dict = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        dict = [[NSMutableDictionary alloc] init];
+    });
+    return dict;
+}
+
+TLInputFileLocation *OGInputLocationFromImageUrl(NSString *url, TGMediaOriginInfo *originInfo, int *datacenterId, int64_t *identifier)
+{
+    bool isPeerPhoto = [url hasPrefix:@"peerphoto:"];
+    bool isPhoto = [url hasPrefix:@"photo:"];
+    bool isDocumentThumb = [url hasPrefix:@"documentthumb:"];
+    NSArray *fields = [url componentsSeparatedByString:@":"];
+    if (!(isPeerPhoto || isPhoto || isDocumentThumb) || fields.count < 7)
+        return nil;
+    
+    if (datacenterId != NULL)
+        *datacenterId = [[fields objectAtIndex:1] intValue];
+    
+    if (isPeerPhoto)
+    {
+        int64_t peerId = [[fields objectAtIndex:3] longLongValue];
+        int64_t photoId = [[fields objectAtIndex:5] longLongValue];
+        if (identifier != NULL)
+            *identifier = photoId != 0 ? photoId : peerId;
+        
+        TLInputFileLocation$inputPeerPhotoFileLocation *peerLocation = [[TLInputFileLocation$inputPeerPhotoFileLocation alloc] init];
+        peerLocation.peer_id = peerId;
+        peerLocation.access_hash = [[fields objectAtIndex:4] longLongValue];
+        peerLocation.photo_id = photoId;
+        peerLocation.peer_type = [[fields objectAtIndex:2] intValue];
+        peerLocation.big = [[fields objectAtIndex:6] intValue] != 0;
+        return peerLocation;
+    }
+    
+    int64_t fileId = [[fields objectAtIndex:2] longLongValue];
+    int64_t accessHash = [[fields objectAtIndex:3] longLongValue];
+    NSString *thumbSize = [fields objectAtIndex:5] ?: @"";
+    NSData *originReference = [originInfo fileReference];
+    NSData *fileReference = originReference.length != 0 ? originReference : ([NSData dataWithHexString:[fields objectAtIndex:6]] ?: [NSData data]);
+    if (identifier != NULL)
+        *identifier = fileId;
+    
+    if (isPhoto)
+    {
+        TLInputFileLocation$inputPhotoFileLocation *photoLocation = [[TLInputFileLocation$inputPhotoFileLocation alloc] init];
+        photoLocation.n_id = fileId;
+        photoLocation.access_hash = accessHash;
+        photoLocation.file_reference = fileReference;
+        photoLocation.thumb_size = thumbSize;
+        return photoLocation;
+    }
+    
+    TLInputFileLocation$inputDocumentFileLocation *documentLocation = [[TLInputFileLocation$inputDocumentFileLocation alloc] init];
+    documentLocation.n_id = fileId;
+    documentLocation.access_hash = accessHash;
+    documentLocation.file_reference = fileReference;
+    documentLocation.thumb_size = thumbSize;
+    return documentLocation;
+}
+
+static NSString *OGMultipartTemporaryFilePath(NSString *folderName)
+{
+    static NSString *tempRoot = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        tempRoot = [[TGAppDelegate documentsPath] stringByAppendingPathComponent:@"temp"];
+    });
+    
+    NSString *folderPath = [tempRoot stringByAppendingPathComponent:folderName];
+    [[NSFileManager defaultManager] createDirectoryAtPath:folderPath withIntermediateDirectories:true attributes:nil error:nil];
+    return [folderPath stringByAppendingPathComponent:@"temporary"];
+}
+
+static NSMutableDictionary *OGMultipartFileOptions(int64_t identifier, id fileLocation, NSString *storeFilePath, int datacenterId)
+{
+    return [[NSMutableDictionary alloc] initWithDictionary:@{
+        @"identifier": @(identifier),
+        @"fileLocation": fileLocation,
+        @"storeFilePath": storeFilePath,
+        @"datacenterId": @(datacenterId),
+        @"encryptionArgs": @{},
+        @"mediaTypeTag": @(TGNetworkMediaTypeTagImage),
+        @"completeWithData": @true
+    }];
+}
+
+typedef void (^TGRemoteImageDownloadCompletionBlock)(NSData *data);
+
+@interface TGImageDownloadActor ()
+{
+    bool _updateMediaAccessTimeOnRelease;
+    int32_t _messageId;
+    int64_t _imageId;
+    TGMediaOriginInfo *_originInfo;
+    bool _multipart;
+    bool _thumbnailOnly;
+    NSString *_multipartFilePath;
+}
+
+@property (nonatomic, copy) TGRemoteImageDownloadCompletionBlock downloadCompletionBlock;
+
+@property (nonatomic) float progress;
+@property (nonatomic) bool requestedActors;
+@property (atomic) NSInteger lightgramImagePriority;
+
+- (void)lightgramCompletePeerAvatarData:(NSData *)imageData path:(NSString *)path cache:(TGCache *)cache storeUrl:(NSString *)storeUrl processorName:(NSString *)processorName allowMemoryCache:(bool)allowMemoryCache forceMemoryCache:(bool)forceMemoryCache allowThumbnailCache:(bool)allowThumbnailCache priority:(NSInteger)priority;
+
+@end
+
+@interface LightGramPeerAvatarRenderTask : NSObject
+
+@property (nonatomic, weak) TGImageDownloadActor *actor;
+@property (nonatomic, copy) dispatch_block_t block;
+@property (nonatomic) NSInteger priority;
+
+@end
+
+@implementation LightGramPeerAvatarRenderTask
+@end
+
+@implementation TGImageDownloadActor
+
+@synthesize actionHandle = _actionHandle;
+
+@synthesize downloadCompletionBlock = _downloadCompletionBlock;
+
+@synthesize progress = _progress;
+@synthesize requestedActors = _requestedActors;
+
++ (NSString *)genericPath
+{
+    return @"/img/@";
+}
+
++ (void)reloadForAccountSwitch
+{
+    [urlRewrites() removeAllObjects];
+    [serverAssetData() removeAllObjects];
+}
+
++ (void)addUrlRewrite:(NSString *)currentUrl newUrl:(NSString *)newUrl
+{
+    [urlRewrites() setObject:newUrl forKey:currentUrl];
+}
+
++ (NSString *)possiblyRewrittenUrl:(NSString *)url
+{
+    NSString *newUrl = [urlRewrites() objectForKey:url];
+    if (newUrl != nil)
+        return newUrl;
+    return url;
+}
+
++ (NSDictionary *)serverMediaDataForAssetUrl:(NSString *)assetUrl
+{
+    if (assetUrl.length == 0)
+        return nil;
+    
+    id object = [serverAssetData() objectForKey:assetUrl];
+    if ([object isKindOfClass:[NSNull class]])
+        return nil;
+    
+    if ([object isKindOfClass:[NSDictionary class]])
+        return object;
+    
+    TGMediaAttachment *attachment = [TGDatabaseInstance() loadServerAssetData:assetUrl];
+    if (attachment == nil)
+    {
+        [serverAssetData() setObject:[NSNull null] forKey:assetUrl];
+        return nil;
+    }
+    
+    NSDictionary *dict = nil;
+    
+    if (attachment.type == TGImageMediaAttachmentType)
+    {
+        TGImageMediaAttachment *imageAttachment = (TGImageMediaAttachment *)attachment;
+        imageAttachment.caption = nil;
+        dict = [[NSDictionary alloc] initWithObjectsAndKeys:[[NSNumber alloc] initWithLongLong:imageAttachment.imageId], @"imageId", [[NSNumber alloc] initWithLongLong:imageAttachment.accessHash], @"accessHash", imageAttachment, @"imageAttachment", nil];
+        [serverAssetData() setObject:dict forKey:assetUrl];
+        return dict;
+    }
+    else if (attachment.type == TGVideoMediaAttachmentType)
+    {
+        TGVideoMediaAttachment *videoAttachment = (TGVideoMediaAttachment *)attachment;
+        videoAttachment.caption = nil;
+        dict = [[NSDictionary alloc] initWithObjectsAndKeys:videoAttachment, @"videoAttachment", nil];
+        [serverAssetData() setObject:dict forKey:assetUrl];
+        return dict;
+    }
+    
+    return nil;
+}
+
++ (void)addServerMediaDataForAssetUrl:(NSString *)assetUrl attachment:(TGMediaAttachment *)attachment
+{
+    if (assetUrl.length == 0 || attachment == nil)
+        return;
+    
+    [TGDatabaseInstance() storeServerAssetData:assetUrl attachment:attachment];
+    
+    if (attachment.type == TGImageMediaAttachmentType)
+    {
+        TGImageMediaAttachment *imageAttachment = (TGImageMediaAttachment *)attachment;
+        NSDictionary *dict = [[NSDictionary alloc] initWithObjectsAndKeys:[[NSNumber alloc] initWithLongLong:imageAttachment.imageId], @"imageId", [[NSNumber alloc] initWithLongLong:imageAttachment.accessHash], @"accessHash", imageAttachment, @"imageAttachment", nil];
+        [serverAssetData() setObject:dict forKey:assetUrl];
+    }
+    else if (attachment.type == TGVideoMediaAttachmentType)
+    {
+        TGVideoMediaAttachment *videoAttachment = (TGVideoMediaAttachment *)attachment;
+        NSDictionary *dict = [[NSDictionary alloc] initWithObjectsAndKeys:videoAttachment, @"videoAttachment", nil];
+        [serverAssetData() setObject:dict forKey:assetUrl];
+    }
+}
+
++ (void)clearServerMediaSataForAssetUrl:(NSString *)assetUrl
+{
+    if (assetUrl.length == 0)
+        return;
+    
+    [serverAssetData() removeObjectForKey:assetUrl];
+    [TGDatabaseInstance() removeServerAssetData:assetUrl];
+}
+
++ (NSOperationQueue *)operationQueue
+{
+    static NSOperationQueue *queue = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        queue = [[NSOperationQueue alloc] init];
+        [queue setMaxConcurrentOperationCount:performanceBackgroundWorkerCount()];
+    });
+    return queue;
+}
+
+- (id)initWithPath:(NSString *)path
+{
+    self = [super initWithPath:path];
+    if (self != nil)
+    {   
+        _actionHandle = [[ASHandle alloc] initWithDelegate:self releaseOnMainThread:false];
+    }
+    return self;
+}
+
+- (void)prepare:(NSDictionary *)options
+{
+    _thumbnailOnly = [options[@"thumbnailOnly"] boolValue];
+    if ([options[@"thumbnailOnly"] boolValue])
+    {
+        NSUInteger laneCount = LGPlatformUsesConstrainedBackgroundExecution() || LGRuntimeSingleCoreDevice() ? 2 : 4;
+        self.requestQueueName = [NSString stringWithFormat:@"lightgramMediaThumbnail-%lu", (unsigned long)([self.path hash] % laneCount)];
+        return;
+    }
+    if (TGImageDownloadUsesPeerAvatarPipeline() && [self.path hasPrefix:@"/img/(download:"] && [self.path rangeOfString:@"peerphoto:"].location != NSNotFound)
+    {
+        NSUInteger lane = [self.path hash] % 4;
+        self.requestQueueName = [NSString stringWithFormat:@"lightgramPeerPhotoDownload-%lu", (unsigned long)lane];
+        return;
+    }
+
+    if (options != nil)
+    {
+        int contentHints = [[options objectForKey:@"contentHints"] intValue];
+        if (contentHints & TGRemoteImageContentHintLargeFile)
+        {
+            if ([options[@"automaticDownload"] boolValue])
+                return;
+            if ([[self.path substringFromIndex:6] hasPrefix:@"download:"]) {
+                int datacenterId = 0;
+                NSDictionary *userProperties = options[@"userProperties"];
+                if ([userProperties respondsToSelector:@selector(objectForKey:)]) {
+                    TGImageInfo *imageInfo = userProperties[@"imageInfo"];
+                    if (imageInfo != nil) {
+                        NSString *url = [imageInfo imageUrlForLargestSize:nil];
+                        if (url != nil) {
+                            if ([url hasPrefix:@"photo:"] || [url hasPrefix:@"documentthumb:"])
+                            {
+                                NSArray *parts = [url componentsSeparatedByString:@":"];
+                                if (parts.count >= 2)
+                                    datacenterId = [parts[1] intValue];
+                            }
+                            else
+                                extractFileUrlComponents(url, &datacenterId, nil, nil, nil);
+                        }
+                    }
+                }
+                NSUInteger laneCount = LGPlatformUsesConstrainedBackgroundExecution() || LGRuntimeSingleCoreDevice() ? 1 : 2;
+                self.requestQueueName = [NSString stringWithFormat:@"imageDownload-%d-%lu", datacenterId, (unsigned long)([self.path hash] % laneCount)];
+            }
+        }
+    }
+}
+
+- (void)dealloc
+{
+    [_actionHandle reset];
+    if (_requestedActors)
+        [ActionStageInstance() removeWatcher:self];
+}
+
+static inline double imageProcessingPriority()
+{
+    if (cpuCoreCount() <= 1)
+        return 0.4;
+    return TGIsRetina() ? 0.4 : 0.12;
+}
+
+static NSOperationQueuePriority LightGramImageQueuePriority(NSInteger priority)
+{
+    if (priority >= 2)
+        return NSOperationQueuePriorityVeryHigh;
+    if (priority <= 0)
+        return NSOperationQueuePriorityLow;
+    return NSOperationQueuePriorityNormal;
+}
+
+static NSMutableArray *LightGramPeerAvatarHighRenderQueue = nil;
+static NSMutableArray *LightGramPeerAvatarLowRenderQueue = nil;
+static bool LightGramPeerAvatarRenderScheduled = false;
+
+static void LightGramPumpPeerAvatarRenderQueue(void);
+
+static dispatch_queue_t LightGramPeerAvatarRenderCoordinationQueue(void)
+{
+    static dispatch_queue_t queue = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        queue = dispatch_queue_create("dev.notdevv.LightGram.avatar-render", DISPATCH_QUEUE_SERIAL);
+    });
+    return queue;
+}
+
+static dispatch_queue_t LightGramPeerAvatarRenderExecutionQueue(void)
+{
+    static dispatch_queue_t queue = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        queue = dispatch_queue_create("dev.notdevv.LightGram.avatar-render-execution", DISPATCH_QUEUE_SERIAL);
+        dispatch_set_target_queue(queue, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));
+    });
+    return queue;
+}
+
+static void LightGramEnqueuePeerAvatarRender(TGImageDownloadActor *actor, NSInteger priority, dispatch_block_t block)
+{
+    if (actor == nil || block == nil)
+        return;
+
+    dispatch_async(LightGramPeerAvatarRenderCoordinationQueue(), ^
+    {
+        if (LightGramPeerAvatarHighRenderQueue == nil)
+        {
+            LightGramPeerAvatarHighRenderQueue = [[NSMutableArray alloc] init];
+            LightGramPeerAvatarLowRenderQueue = [[NSMutableArray alloc] init];
+        }
+
+        LightGramPeerAvatarRenderTask *task = [[LightGramPeerAvatarRenderTask alloc] init];
+        task.actor = actor;
+        task.block = block;
+        task.priority = priority;
+        NSMutableArray *queue = priority >= 2 ? LightGramPeerAvatarHighRenderQueue : LightGramPeerAvatarLowRenderQueue;
+        [queue addObject:task];
+        if (!LightGramPeerAvatarRenderScheduled)
+        {
+            LightGramPeerAvatarRenderScheduled = true;
+            LightGramPumpPeerAvatarRenderQueue();
+        }
+    });
+}
+
+static void LightGramPromotePeerAvatarRender(TGImageDownloadActor *actor)
+{
+    if (actor == nil)
+        return;
+
+    dispatch_async(LightGramPeerAvatarRenderCoordinationQueue(), ^
+    {
+        for (NSInteger index = (NSInteger)LightGramPeerAvatarLowRenderQueue.count - 1; index >= 0; index--)
+        {
+            LightGramPeerAvatarRenderTask *task = [LightGramPeerAvatarLowRenderQueue objectAtIndex:(NSUInteger)index];
+            if (task.actor == actor)
+            {
+                task.priority = 2;
+                [LightGramPeerAvatarLowRenderQueue removeObjectAtIndex:(NSUInteger)index];
+                [LightGramPeerAvatarHighRenderQueue addObject:task];
+            }
+        }
+    });
+}
+
+static void LightGramPrunePeerAvatarRenderQueue(NSMutableArray *queue)
+{
+    for (NSInteger index = (NSInteger)queue.count - 1; index >= 0; index--)
+    {
+        LightGramPeerAvatarRenderTask *task = [queue objectAtIndex:(NSUInteger)index];
+        if (task.actor == nil || task.actor.cancelled)
+            [queue removeObjectAtIndex:(NSUInteger)index];
+    }
+}
+
+static void LightGramPeerAvatarRenderFinished(void)
+{
+    dispatch_async(LightGramPeerAvatarRenderCoordinationQueue(), ^
+    {
+        if (LightGramPeerAvatarHighRenderQueue.count != 0 || LightGramPeerAvatarLowRenderQueue.count != 0)
+            LightGramPumpPeerAvatarRenderQueue();
+        else
+            LightGramPeerAvatarRenderScheduled = false;
+    });
+}
+
+static void LightGramPumpPeerAvatarRenderQueue(void)
+{
+    LightGramPrunePeerAvatarRenderQueue(LightGramPeerAvatarHighRenderQueue);
+    LightGramPrunePeerAvatarRenderQueue(LightGramPeerAvatarLowRenderQueue);
+    bool hasHighPriorityWork = LightGramPeerAvatarHighRenderQueue.count != 0;
+    if (LGRuntimeInteractionActiveFast() && !hasHighPriorityWork)
+    {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), LightGramPeerAvatarRenderCoordinationQueue(), ^
+        {
+            LightGramPumpPeerAvatarRenderQueue();
+        });
+        return;
+    }
+
+    NSMutableArray *queue = hasHighPriorityWork ? LightGramPeerAvatarHighRenderQueue : LightGramPeerAvatarLowRenderQueue;
+    if (queue.count == 0)
+    {
+        LightGramPeerAvatarRenderScheduled = false;
+        return;
+    }
+
+    LightGramPeerAvatarRenderTask *task = [queue objectAtIndex:0];
+    [queue removeObjectAtIndex:0];
+
+    dispatch_async(LightGramPeerAvatarRenderExecutionQueue(), ^
+    {
+        @autoreleasepool
+        {
+            task.block();
+        }
+        LightGramPeerAvatarRenderFinished();
+    });
+}
+
+
+- (void)lightgramCompletePeerAvatarData:(NSData *)imageData path:(NSString *)path cache:(TGCache *)cache storeUrl:(NSString *)storeUrl processorName:(NSString *)processorName allowMemoryCache:(bool)allowMemoryCache forceMemoryCache:(bool)forceMemoryCache allowThumbnailCache:(bool)allowThumbnailCache priority:(NSInteger)priority
+{
+    if (imageData.length == 0 || path.length == 0 || self.cancelled)
+        return;
+
+    __weak TGImageDownloadActor *weakSelf = self;
+    NSInteger effectivePriority = MAX(priority, self.lightgramImagePriority);
+    LightGramEnqueuePeerAvatarRender(self, effectivePriority, ^
+    {
+        TGImageDownloadActor *strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf.cancelled)
+            return;
+
+        UIImage *sourceImage = LGPlatformDecodeImageData(imageData, LightGramImageDecodeSize(imageData, processorName, nil), effectivePriority, ^bool
+        {
+            return strongSelf.cancelled;
+        });
+        UIImage *image = sourceImage;
+        if (image != nil && processorName.length != 0)
+        {
+            TGImageProcessor processor = [TGRemoteImageView imageProcessorForName:processorName];
+            image = LightGramApplyImageProcessor(image, processor, processorName, [path hasPrefix:@"/img/({filter:"] ? [path substringFromIndex:[path rangeOfString:@"}"].location + 1] : path);
+        }
+        else if (image != nil)
+        {
+            image = LightGramPreloadDownloadedImage(image, effectivePriority, ^bool
+            {
+                return strongSelf.cancelled;
+            });
+        }
+
+        if (image == nil)
+        {
+            [ActionStageInstance() dispatchOnStageQueue:^
+            {
+                [ActionStageInstance() actionFailed:path reason:-1];
+            }];
+            return;
+        }
+
+        if (allowMemoryCache && (!TG_CACHE_INPLACE || forceMemoryCache))
+            [cache cacheImage:image withData:nil url:storeUrl availability:TGCacheMemory];
+        if (allowThumbnailCache)
+            [cache cacheThumbnail:image url:storeUrl];
+
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            [ActionStageInstance() nodeRetrieved:path node:[[SGraphObjectNode alloc] initWithObject:image]];
+        }];
+    });
+}
+
+- (void)execute:(NSDictionary *)options
+{
+    static CFAbsoluteTime lastCompletionTime = 0;
+    static bool delayFastCompletion = false;
+    const CFTimeInterval fastDelayThresold = 0.018;
+    const CFTimeInterval minimalThreshold = 0.008;
+    
+    bool allowThumbnailCache = false;
+    bool allowMemoryCache = true;
+    bool thumbnailOnly = _thumbnailOnly;
+    
+    int contentHints = 0;
+    id userProperties = nil;
+    
+    bool forceMemoryCache = false;
+    
+    TGCache *cache = nil;
+    if (options != nil)
+    {
+        NSNumber *cancelTimeout = [options objectForKey:@"cancelTimeout"];
+        if (cancelTimeout != nil)
+            self.cancelTimeout = [cancelTimeout intValue];
+        cache = [options objectForKey:@"cache"];
+        
+        contentHints = [[options objectForKey:@"contentHints"] intValue];
+        
+        NSNumber *nAllowThumbnailCache = [options objectForKey:@"allowThumbnailCache"];
+        if (nAllowThumbnailCache != nil)
+            allowThumbnailCache = [nAllowThumbnailCache boolValue];
+        
+        NSNumber *nUseCache = [options objectForKey:@"useCache"];
+        if (nUseCache != nil)
+            allowMemoryCache = [nUseCache boolValue];
+        
+        userProperties = [options objectForKey:@"userProperties"];
+        
+        forceMemoryCache = [[options objectForKey:@"forceMemoryCache"] boolValue];
+    }
+    
+    if (cache == nil)
+        cache = [TGRemoteImageView sharedCache];
+    
+    NSString *path = self.path;
+    
+    NSString *actualPath = self.path;
+    if ([actualPath hasPrefix:@"/img/(download:"])
+        actualPath = [actualPath stringByReplacingOccurrencesOfString:@"/img/(download:" withString:@"/img/("];
+    
+    NSString *url = nil;
+    TGImageProcessor processor = nil;
+    NSString *processorName = nil;
+    if ([actualPath hasPrefix:@"/img/({filter:"])
+    {
+        NSRange range = [actualPath rangeOfString:@"}"];
+        if (range.location == NSNotFound)
+        {
+            [ActionStageInstance() nodeRetrieveFailed:self.path];
+            return;
+        }
+        processorName = [actualPath substringWithRange:NSMakeRange(14, range.location - 14)];
+        processor = [TGRemoteImageView imageProcessorForName:processorName];
+        url = [actualPath substringWithRange:NSMakeRange(range.location + 1, actualPath.length - range.location - 1 - 1)];
+    }
+    else
+        url = [actualPath substringWithRange:NSMakeRange(6, actualPath.length - 6 - 1)];
+    
+    NSString *rewrittenUrl = [TGImageDownloadActor possiblyRewrittenUrl:url];
+    url = rewrittenUrl;
+
+    bool lightgramPeerPhoto = [url hasPrefix:@"peerphoto:"] && TGImageDownloadUsesPeerAvatarPipeline();
+    NSNumber *lightgramImagePriorityValue = [userProperties objectForKey:@"lightgramImagePriority"];
+    NSInteger lightgramImagePriority = lightgramImagePriorityValue == nil ? 2 : [lightgramImagePriorityValue integerValue];
+    self.lightgramImagePriority = lightgramImagePriority;
+    
+    NSString *storeUrl = [TGRemoteImageView cacheKeyForUrl:url filter:processor != nil ? processorName : nil];
+
+    bool cacheFiltered = [processorName hasSuffix:@"+bake"];
+    
+    if ([url hasPrefix:@"asset-original:"] || [url hasPrefix:@"asset-thumbnail:"])
+    {
+        NSString *assetUrl = [url substringFromIndex:[url rangeOfString:@":"].location + 1];
+        [TGImagePickerController loadAssetWithUrl:[[NSURL alloc] initWithString:assetUrl] completion:^(ALAsset *asset)
+        {
+            UIImage *image = nil;
+            if (asset != nil)
+            {
+                if ([url hasPrefix:@"asset-original:"])
+                {
+                    UIImage *rawImage = [[UIImage alloc] initWithCGImage:asset.defaultRepresentation.fullScreenImage];
+                    if (processor != nil)
+                        image = processor(rawImage);
+                    else
+                        image = [rawImage preloadedImage];
+                    
+                    if (image != nil && allowMemoryCache && (!TG_CACHE_INPLACE || forceMemoryCache))
+                        [cache cacheImage:image withData:nil url:storeUrl availability:TGCacheMemory];
+                }
+                else
+                {
+                    image = TGMediaAssetLegacyAspectRatioThumbnailImage(asset);
+                }
+            }
+            
+            if (image != nil)
+                [ActionStageInstance() nodeRetrieved:path node:[[SGraphObjectNode alloc] initWithObject:image]];
+            else
+                [ActionStageInstance() nodeRetrieveFailed:path];
+        }];
+        
+        return;
+    }
+    
+    UIImage *imageManagerImage = nil;
+    if (!lightgramPeerPhoto)
+        imageManagerImage = [[TGImageManager instance] loadImageSyncWithUri:url canWait:true decode:processor == nil acceptPartialData:false asyncTaskId:NULL progress:nil partialCompletion:nil completion:nil];
+    if (imageManagerImage != nil)
+    {
+        UIImage *image = processor != nil ? processor(imageManagerImage) : imageManagerImage;
+        
+        if (image != nil && allowMemoryCache && (!TG_CACHE_INPLACE || forceMemoryCache))
+            [cache cacheImage:image withData:nil url:storeUrl availability:TGCacheMemory];
+        
+        if (image != nil)
+            [ActionStageInstance() nodeRetrieved:path node:[[SGraphObjectNode alloc] initWithObject:image]];
+        else
+            [ActionStageInstance() nodeRetrieveFailed:path];
+    }
+    
+    if ([url hasPrefix:@"dialogListPlaceholder:"])
+    {
+        int64_t conversationId = [[url substringFromIndex:@"dialogListPlaceholder:".length] longLongValue];
+        
+        UIImage *image = conversationId < 0 ? [[TGInterfaceAssets instance] groupAvatarPlaceholder:conversationId] : [[TGInterfaceAssets instance] avatarPlaceholder:conversationId];
+        
+        if (image != nil && allowMemoryCache && (!TG_CACHE_INPLACE || forceMemoryCache))
+            [cache cacheImage:image withData:nil url:storeUrl availability:TGCacheMemory];
+        
+        if (image != nil)
+            [ActionStageInstance() nodeRetrieved:path node:[[SGraphObjectNode alloc] initWithObject:image]];
+        else
+            [ActionStageInstance() nodeRetrieveFailed:path];
+    }
+    
+    NSString *url1 = url;
+    NSString *url2 = nil;
+    if (cacheFiltered)
+    {
+        url1 = storeUrl;
+        url2 = url;
+    }
+    
+    NSString *trimmedUrl1 = [TGRemoteImageView cacheKeyForUrl:url1 filter:nil];
+    NSString *trimmedUrl2 = [TGRemoteImageView cacheKeyForUrl:url2 filter:nil];
+
+    NSString *trimmedUrl = cacheFiltered ? trimmedUrl2 : trimmedUrl1;
+    
+    [cache diskCacheContains:trimmedUrl1 orUrl:trimmedUrl2 completion:^(bool firstInDiskCache, bool secondInDiskCache)
+    {
+        [ActionStageInstance() dispatchOnStageQueue:^
+        {
+            if (firstInDiskCache || secondInDiskCache)
+            {
+                NSBlockOperation *operation = [[NSBlockOperation alloc] init];
+                
+                __weak NSOperation *blockOperation = operation;
+                [operation addExecutionBlock:^
+                {
+                    @autoreleasepool
+                    {
+                        NSOperation *strongBlockOperation = blockOperation;
+                        if (strongBlockOperation.isCancelled)
+                            return;
+                        strongBlockOperation = nil;
+                        
+                        NSString *cachedUrl = (firstInDiskCache ? trimmedUrl1 : trimmedUrl2);
+                        if (lightgramPeerPhoto)
+                        {
+                            NSData *avatarData = [cache cachedDataForUrl:cachedUrl];
+                            if (avatarData.length != 0)
+                            {
+                                [self lightgramCompletePeerAvatarData:avatarData path:path cache:cache storeUrl:storeUrl processorName:processorName allowMemoryCache:allowMemoryCache forceMemoryCache:forceMemoryCache allowThumbnailCache:allowThumbnailCache priority:lightgramImagePriority];
+                            }
+                            else
+                            {
+                                [cache removeFromDiskCache:cachedUrl];
+                                [ActionStageInstance() nodeRetrieveFailed:path];
+                            }
+                            return;
+                        }
+                        
+                        UIImage *cachedImage = nil;
+                        bool imageFromDisc = false;
+                        if (cachedImage == nil)
+                        {
+                            NSData *cachedData = [cache cachedDataForUrl:cachedUrl];
+                            if (cachedData.length != 0)
+                                cachedImage = LGPlatformDecodeImageData(cachedData, LightGramImageDecodeSize(cachedData, processorName, userProperties), lightgramImagePriority, ^bool
+                                {
+                                    NSOperation *currentOperation = blockOperation;
+                                    return currentOperation.isCancelled;
+                                });
+                            if (cachedImage == nil && !blockOperation.isCancelled)
+                                cachedImage = LGPlatformDecodeImageWithBlock(^UIImage *
+                                {
+                                    return [cache cachedImage:cachedUrl availability:TGCacheDisk];
+                                }, CGSizeZero, lightgramImagePriority, ^bool
+                                {
+                                    return blockOperation.isCancelled;
+                                });
+                            if (cachedImage == nil && [cachedUrl hasPrefix:@"documentthumb:"])
+                                cachedImage = TGImageDownloadVideoPoster([cache cachedDataForUrl:cachedUrl], [cache pathForCachedData:cachedUrl],
+                                    LightGramImageDecodeSize(nil, processorName, userProperties), lightgramImagePriority, ^bool
+                                {
+                                    return blockOperation.isCancelled;
+                                });
+                            imageFromDisc = true;
+                        }
+                        
+                        strongBlockOperation = blockOperation;
+                        if (strongBlockOperation.isCancelled)
+                            return;
+                        strongBlockOperation = nil;
+                        
+                        if (cachedImage != nil)
+                        {
+                            if (cacheFiltered && cachedImage != nil && processor != nil && firstInDiskCache)
+                            {
+                                [cachedImage tgPreload];
+                            }
+                            else
+                            {
+                                UIImage *originalImage = cachedImage;
+                                if (processor != nil)
+                                {
+                                    cachedImage = LightGramApplyImageProcessor(cachedImage, processor, processorName, url1);
+                                    
+                                    if (cacheFiltered && !firstInDiskCache)
+                                    {
+                                        NSData *filteredData = UIImageJPEGRepresentation(cachedImage, 0.5f);
+                                        [cache cacheImage:nil withData:filteredData url:storeUrl availability:TGCacheDisk];
+                                    }
+                                    
+                                    if (cachedImage == originalImage && imageFromDisc && !thumbnailOnly)
+                                        cachedImage = LightGramPreloadDownloadedImage(cachedImage, lightgramImagePriority, ^bool
+                                        {
+                                            return blockOperation.isCancelled;
+                                        });
+                                }
+                                else if (imageFromDisc && !thumbnailOnly)
+                                    cachedImage = LightGramPreloadDownloadedImage(cachedImage, lightgramImagePriority, ^bool
+                                    {
+                                        return blockOperation.isCancelled;
+                                    });
+                            }
+                            
+                            strongBlockOperation = blockOperation;
+                            if (strongBlockOperation.isCancelled)
+                                return;
+                            strongBlockOperation = nil;
+                            
+                            if (imageFromDisc)
+                            {
+                                if (allowMemoryCache && (!TG_CACHE_INPLACE || forceMemoryCache))
+                                    [cache cacheImage:cachedImage withData:nil url:storeUrl availability:TGCacheMemory];
+                                
+                                if (allowThumbnailCache)
+                                    [cache cacheThumbnail:cachedImage url:storeUrl];
+                            }
+                            
+                            strongBlockOperation = blockOperation;
+                            if (strongBlockOperation.isCancelled)
+                                return;
+                            strongBlockOperation = nil;
+                            
+                            [ActionStageInstance() dispatchOnStageQueue:^
+                            {
+                                if (delayFastCompletion && cachedImage.size.width * cachedImage.size.height > 200 * 200)
+                                {
+                                    CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
+                                    CFAbsoluteTime threshold = cachedImage.size.width * cachedImage.size.height <= 200 * 200 ? minimalThreshold : fastDelayThresold;
+                                    if (currentTime - lastCompletionTime < threshold)
+                                    {
+                                        CFTimeInterval delay = threshold - (currentTime - lastCompletionTime);
+                                        lastCompletionTime = currentTime;
+                                        usleep((int32_t)(delay * 1000 * 1000));
+                                    }
+                                    else
+                                        lastCompletionTime = currentTime;
+                                }
+                                
+                                [ActionStageInstance() nodeRetrieved:path node:[[SGraphObjectNode alloc] initWithObject:cachedImage]];
+                            }];
+                            
+                            return;
+                        }
+                        else
+                        {
+                            [cache removeFromDiskCache:cachedUrl];
+                            [ActionStageInstance() nodeRetrieveFailed:path];
+                        }
+                    }
+                }];
+                operation.threadPriority = imageProcessingPriority();
+                if (TGImageDownloadUsesPeerAvatarPipeline())
+                    operation.queuePriority = LightGramImageQueuePriority(lightgramImagePriority);
+                self.cancelToken = operation;
+                [[TGImageDownloadActor operationQueue] addOperation:operation];
+            }
+            else
+            {
+                if ([url1 hasPrefix:@"video-thumbnail-"])
+                {
+                    [ActionStageInstance() nodeRetrieveFailed:path];
+                    return;
+                }
+                
+                if ([self.path hasPrefix:@"/img/(download:"])
+                {
+                    _originInfo = options[@"originInfo"];
+                    
+                    NSBlockOperation *processingOperation = [[NSBlockOperation alloc] init];
+                    __block bool processingOperationScheduled = false;
+                    __weak TGImageDownloadActor *weakSelf = self;
+                    self.cancelToken = processingOperation;
+                    self.downloadCompletionBlock = ^(NSData *imageData)
+                    {
+                        @synchronized (processingOperation)
+                        {
+                            if (processingOperationScheduled)
+                                return;
+                            processingOperationScheduled = true;
+                        }
+                        if (imageData != nil)
+                        {
+                            __weak NSOperation *weakBlockOperation = processingOperation;
+                            [processingOperation addExecutionBlock:^
+                            {
+                                @autoreleasepool
+                                {
+                                    NSOperation *blockOperation = weakBlockOperation;
+                                    if (blockOperation.isCancelled)
+                                        return;
+                                    if (lightgramPeerPhoto)
+                                    {
+                                        [weakSelf lightgramCompletePeerAvatarData:imageData path:path cache:cache storeUrl:storeUrl processorName:processorName allowMemoryCache:allowMemoryCache forceMemoryCache:forceMemoryCache allowThumbnailCache:allowThumbnailCache priority:lightgramImagePriority];
+                                        return;
+                                    }
+                                    
+                                    UIImage *image = nil;
+                                    NSData *data = nil;
+                                    
+                                    TGImageDownloadActor *actor = weakSelf;
+                                    if (actor == nil || actor.cancelled)
+                                        return;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 40000
+                                    bool decodedAtSize = [processorName isEqualToString:@"maybeScale"];
+#else
+                                    bool decodedAtSize = false;
+#endif
+                                    image = LGPlatformDecodeImageData(imageData, LightGramImageDecodeSize(imageData, processorName, userProperties), lightgramImagePriority, ^bool
+                                    {
+                                        NSOperation *currentOperation = weakBlockOperation;
+                                        TGImageDownloadActor *currentActor = weakSelf;
+                                        return currentOperation.isCancelled || currentActor == nil || currentActor.cancelled;
+                                    });
+                                    if (image == nil && [trimmedUrl hasPrefix:@"documentthumb:"])
+                                        image = TGImageDownloadVideoPoster(imageData, [cache pathForCachedData:trimmedUrl],
+                                            LightGramImageDecodeSize(nil, processorName, userProperties), lightgramImagePriority, ^bool
+                                        {
+                                            NSOperation *currentOperation = weakBlockOperation;
+                                            TGImageDownloadActor *currentActor = weakSelf;
+                                            return currentOperation.isCancelled || currentActor == nil || currentActor.cancelled;
+                                        });
+                                    data = imageData;
+                                    
+                                    if (image == nil || data == nil)
+                                    {
+                                        [ActionStageInstance() actionFailed:path reason:-1];
+                                    }
+                                    else
+                                    {
+                                        UIImage *imageForThumbnail = nil;
+                                        
+                                        TGImageInfo *imageInfo = [userProperties objectForKey:@"imageInfo"];
+                                        if (imageInfo != nil)
+                                            imageForThumbnail = image;
+                                        
+                                        if (image != nil)
+                                        {
+                                            
+                                            if (processor != nil)
+                                            {   
+                                                UIImage *originalImage = image;
+                                                image = LightGramApplyImageProcessor(image, processor, processorName, trimmedUrl);
+                                                if (image == originalImage && !decodedAtSize && !thumbnailOnly)
+                                                    image = LightGramPreloadDownloadedImage(image, lightgramImagePriority, ^bool
+                                                    {
+                                                        NSOperation *currentOperation = weakBlockOperation;
+                                                        return currentOperation.isCancelled;
+                                                    });
+                                                
+                                                if (allowMemoryCache && (!TG_CACHE_INPLACE || forceMemoryCache))
+                                                    [cache cacheImage:image withData:nil url:storeUrl availability:TGCacheMemory];
+                                                
+                                                if (allowThumbnailCache)
+                                                    [cache cacheThumbnail:image url:storeUrl];
+                                            }
+                                            else
+                                            {
+                                                if (!thumbnailOnly)
+                                                    image = LightGramPreloadDownloadedImage(image, lightgramImagePriority, ^bool
+                                                    {
+                                                        NSOperation *currentOperation = weakBlockOperation;
+                                                        return currentOperation.isCancelled;
+                                                    });
+                                                
+                                                if (allowMemoryCache && (!TG_CACHE_INPLACE || forceMemoryCache))
+                                                    [cache cacheImage:image withData:nil url:storeUrl availability:TGCacheMemory];
+                                                
+                                                if (allowThumbnailCache)
+                                                    [cache cacheThumbnail:image url:storeUrl];
+                                            }
+                                            
+                                            if (delayFastCompletion)
+                                            {
+                                                CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
+                                                CFAbsoluteTime threshold = image.size.width * image.size.height <= 180 * 180 ? minimalThreshold : fastDelayThresold;
+                                                if (currentTime - lastCompletionTime < threshold)
+                                                {
+                                                    CFTimeInterval delay = threshold - (currentTime - lastCompletionTime);
+                                                    lastCompletionTime = currentTime;
+                                                    usleep((int32_t)(delay * 1000 * 1000));
+                                                }
+                                                else
+                                                    lastCompletionTime = currentTime;
+                                            }
+                                            
+                                            NSString *thumbnailUrl = nil;
+                                            NSData *thumbnailData = nil;
+                                            if (imageInfo != nil && imageForThumbnail != nil && ![url hasPrefix:@"upload"])
+                                            {
+                                                CGSize thumbnailSize = CGSizeZero;
+                                                thumbnailUrl = [imageInfo closestImageUrlWithSize:CGSizeMake(90, 90) resultingSize:&thumbnailSize];
+                                                NSString *thumbnailPath = thumbnailUrl != nil ? [cache pathForCachedData:thumbnailUrl] : nil;
+                                                if (thumbnailUrl != nil && ![thumbnailUrl isEqualToString:trimmedUrl] && ![[NSFileManager defaultManager] fileExistsAtPath:thumbnailPath])
+                                                {
+                                                    thumbnailSize = TGFitSize(imageForThumbnail.pixelSize, [TGGenericModernConversationCompanion preferredInlineThumbnailSize]);
+                                                    UIImage *thumbnailImage = TGScaleImageToPixelSize(imageForThumbnail, thumbnailSize);
+                                                    if (thumbnailImage != nil)
+                                                        thumbnailData = UIImageJPEGRepresentation(thumbnailImage, 0.85f);
+                                                }
+                                            }
+                                            [ActionStageInstance() dispatchOnStageQueue:^
+                                            {
+                                                TGImageDownloadActor *currentActor = weakSelf;
+                                                if (currentActor == nil || currentActor.cancelled)
+                                                    return;
+                                                [ActionStageInstance() nodeRetrieved:path node:[[SGraphObjectNode alloc] initWithObject:image]];
+                                            
+                                                if (thumbnailData != nil)
+                                                {
+                                                    [cache removeFromMemoryCache:thumbnailUrl matchEnd:true];
+                                                    [cache cacheImage:nil withData:thumbnailData url:thumbnailUrl availability:TGCacheDisk];
+                                                    TGFileDownloadActor *fileActor = (TGFileDownloadActor *)[ActionStageInstance() executingActorWithPath:[[NSString alloc] initWithFormat:@"/tg/file/(%@)", thumbnailUrl]];
+                                                    if (fileActor != nil)
+                                                        [fileActor completeWithData:thumbnailData];
+                                                }
+                                                if (thumbnailUrl != nil)
+                                                    [ActionStageInstance() dispatchResource:@"/as/media/imageThumbnailUpdated" resource:thumbnailUrl];
+                                            
+                                                if ([[userProperties objectForKey:@"storeAsAsset"] boolValue])
+                                                {
+                                                    bool shouldSave = true;
+                                                
+                                                    if (![userProperties[@"forceSave"] boolValue])
+                                                    {
+                                                        int mid = [userProperties[@"messageId"] intValue];
+                                                        int64_t conversationId = [userProperties[@"conversationId"] longLongValue];
+                                                        if (mid != 0 && conversationId != 0)
+                                                        {
+                                                        }
+                                                    
+                                                        if (TGPeerIdIsChannel(conversationId)) {
+                                                            shouldSave = false;
+                                                        }
+                                                    }
+                                                
+                                                    if (shouldSave)
+                                                    {
+                                                        [ActionStageInstance() requestActor:[[NSString alloc] initWithFormat:@"/tg/checkImageStored/(%lu)", (unsigned long)[trimmedUrl hash]] options:[[NSDictionary alloc] initWithObjectsAndKeys:trimmedUrl, @"url", nil] watcher:TGTelegraphInstance];
+                                                    }
+                                                }
+                                            }];
+                                        }
+                                        else
+                                        {
+                                            [ActionStageInstance() nodeRetrieveFailed:path];
+                                        }
+                                    }
+                                }
+                            }];
+                            
+                            processingOperation.threadPriority = imageProcessingPriority();
+                            if (thumbnailOnly)
+                                processingOperation.queuePriority = NSOperationQueuePriorityVeryHigh;
+                            else if (TGImageDownloadUsesPeerAvatarPipeline())
+                                processingOperation.queuePriority = LightGramImageQueuePriority(lightgramImagePriority);
+                            [cache cacheImage:nil withData:imageData url:trimmedUrl availability:TGCacheDisk completion:^{
+                                [[TGImageDownloadActor operationQueue] addOperation:processingOperation];
+                            }];
+                        }
+                        else
+                        {
+                            [ActionStageInstance() nodeRetrieveFailed:path];
+                        }
+                    };
+                    
+                    if (contentHints & TGRemoteImageContentHintLargeFile && userProperties != nil && [[userProperties objectForKey:@"messageId"] intValue] != 0 && [userProperties objectForKey:@"mediaId"] != nil)
+                    {
+                        int64_t conversationId = [userProperties[@"conversationId"] longLongValue];
+                        int32_t messageId = [[userProperties objectForKey:@"messageId"] intValue];
+                        [[TGDownloadManager instance] enqueueItem:self.path messageId:[[userProperties objectForKey:@"messageId"] intValue] itemId:[userProperties objectForKey:@"mediaId"] groupId:conversationId itemClass:TGDownloadItemClassImage];
+                        
+                        _updateMediaAccessTimeOnRelease = true;
+                        _messageId = messageId;
+                        TGMediaId *mediaId = [userProperties objectForKey:@"mediaId"];
+                        _imageId = mediaId.itemId;
+                        
+                        TGImageInfo *imageInfo = [userProperties objectForKey:@"imageInfo"];
+                        if (imageInfo != nil)
+                        {
+                            int fileSize = [imageInfo fileSizeForUrl:trimmedUrl];
+                            if (fileSize > 1 * 1024 * 1024)
+                                _multipart = true;
+                        }
+                    }
+                    
+                    _requestedActors = true;
+                    int directDatacenterId = 0;
+                    int64_t directIdentifier = _imageId;
+                    TLInputFileLocation *directLocation = OGInputLocationFromImageUrl(trimmedUrl, _originInfo, &directDatacenterId, &directIdentifier);
+                    if (directLocation != nil)
+                    {
+                        _multipartFilePath = OGMultipartTemporaryFilePath([[NSString alloc] initWithFormat:@"modern-%lu", (unsigned long)[trimmedUrl hash]]);
+                        NSMutableDictionary *multiPartOptions = OGMultipartFileOptions(directIdentifier, directLocation, _multipartFilePath, directDatacenterId);
+                        TGImageInfo *imageInfo = userProperties[@"imageInfo"];
+                        int expectedSize = [imageInfo fileSizeForUrl:trimmedUrl];
+                        NSArray *locationParts = [trimmedUrl componentsSeparatedByString:@":"];
+                        if (expectedSize <= 0 && locationParts.count >= 7 && ([trimmedUrl hasPrefix:@"photo:"] || [trimmedUrl hasPrefix:@"documentthumb:"]))
+                            expectedSize = [locationParts[4] intValue];
+                        if (expectedSize > 0)
+                            multiPartOptions[@"encryptedSize"] = @(expectedSize);
+                        if ([options[@"thumbnailOnly"] boolValue])
+                            multiPartOptions[@"thumbnailOnly"] = @true;
+                        if (_originInfo != nil)
+                            multiPartOptions[@"originInfo"] = _originInfo;
+                        
+                        NSString *multipartPath = [[NSString alloc] initWithFormat:@"/tg/multipart-file/(modern-image:%lld:%d:%lu)", directIdentifier, directDatacenterId, (unsigned long)[trimmedUrl hash]];
+                        int multipartFlags = [[userProperties objectForKey:@"changePriority"] boolValue] ? TGActorRequestChangePriority : 0;
+                        [ActionStageInstance() requestActor:multipartPath options:multiPartOptions flags:multipartFlags watcher:self];
+                    }
+                    else if (_multipart)
+                    {
+                        _multipartFilePath = OGMultipartTemporaryFilePath(trimmedUrl);
+                        
+                        int datacenterId = 0;
+                        int64_t volumeId = 0;
+                        int localId = 0;
+                        int64_t secret = 0;
+                        if (extractFileUrlComponents(trimmedUrl, &datacenterId, &volumeId, &localId, &secret))
+                        {
+                            TLInputFileLocation$inputFileLocation *fileLocation = [[TLInputFileLocation$inputFileLocation alloc] init];
+                            fileLocation.volume_id = volumeId;
+                            fileLocation.local_id = (int32_t)localId;
+                            fileLocation.secret = secret;
+                            if (options[@"originInfo"] != nil)
+                                fileLocation.file_reference = [options[@"originInfo"] fileReferenceForVolumeId:volumeId localId:localId];
+
+                            NSMutableDictionary *multiPartOptions = OGMultipartFileOptions(_imageId, fileLocation, _multipartFilePath, datacenterId);
+                            
+                            if (options[@"originInfo"] != nil)
+                                multiPartOptions[@"originInfo"] = options[@"originInfo"];
+                            if (_thumbnailOnly)
+                                multiPartOptions[@"thumbnailOnly"] = @true;
+                            int expectedSize = [userProperties[@"imageInfo"] fileSizeForUrl:trimmedUrl];
+                            if (expectedSize > 0)
+                                multiPartOptions[@"encryptedSize"] = @(expectedSize);
+                            
+                            [ActionStageInstance() requestActor:[[NSString alloc] initWithFormat:@"/tg/multipart-file/(image:%" PRId64 ":%d:%d)", volumeId, localId, datacenterId] options:multiPartOptions watcher:self];
+                        }
+                    }
+                    else
+                    {
+                        NSMutableDictionary *options = [[NSMutableDictionary alloc] init];
+                        options[@"mediaTypeTag"] = @(TGNetworkMediaTypeTagImage);
+                        options[@"url"] = url;
+                        if (_thumbnailOnly)
+                            options[@"thumbnailOnly"] = @true;
+                        if (_originInfo != nil)
+                            options[@"originInfo"] = _originInfo;
+                        
+                        [ActionStageInstance() requestActor:[NSString stringWithFormat:@"/tg/file/(%@)", url] options:options watcher:self];
+                    }
+                }
+                else
+                {
+                    if (![url hasPrefix:@"upload"])
+                        [ActionStageInstance() dispatchMessageToWatchers:self.path messageType:@"progress" message:[[NSNumber alloc] initWithFloat:0.0f]];
+                    
+                    _requestedActors = true;
+                    [ActionStageInstance() requestActor:[self.path stringByReplacingOccurrencesOfString:@"/img/(" withString:@"/img/(download:"] options:options flags:([[userProperties objectForKey:@"changePriority"] boolValue] ? TGActorRequestChangePriority : 0) watcher:self];
+                }
+            }
+        }];
+    }];
+}
+
+- (void)actorReportedProgress:(NSString *)path progress:(float)progress
+{
+    if ([path hasPrefix:@"/tg/file/"] || [path hasPrefix:@"/tg/multipart-file/"] || [path hasPrefix:@"/img/"])
+    {
+        _progress = progress;
+        [ActionStageInstance() dispatchMessageToWatchers:self.path messageType:@"progress" message:[[NSNumber alloc] initWithFloat:_progress]];
+    }
+}
+
+- (void)actorMessageReceived:(NSString *)path messageType:(NSString *)messageType message:(id)message
+{
+    if ([path hasPrefix:@"/img/"] || [path hasPrefix:@"/tg/multipart-file/"])
+    {
+        if ([messageType isEqualToString:@"progress"])
+        {
+            _progress = [message floatValue];
+            
+            [ActionStageInstance() dispatchMessageToWatchers:self.path messageType:messageType message:message];
+        }
+    }
+}
+
+- (void)watcherJoined:(ASHandle *)watcherHandle options:(NSDictionary *)options waitingInActorQueue:(bool)waitingInActorQueue
+{
+    [watcherHandle receiveActorMessage:self.path messageType:@"progress" message:[[NSNumber alloc] initWithFloat:_progress]];
+    NSInteger priority = [[options[@"userProperties"] objectForKey:@"lightgramImagePriority"] integerValue];
+    if (TGImageDownloadUsesPeerAvatarPipeline() && priority >= 2)
+    {
+        self.lightgramImagePriority = MAX(self.lightgramImagePriority, priority);
+        if ([self.cancelToken isKindOfClass:[NSOperation class]])
+            [(NSOperation *)self.cancelToken setQueuePriority:NSOperationQueuePriorityVeryHigh];
+        LightGramPromotePeerAvatarRender(self);
+    }
+    
+    [super watcherJoined:watcherHandle options:options waitingInActorQueue:waitingInActorQueue];
+}
+
+- (void)actorCompleted:(int)resultCode path:(NSString *)path result:(id)result
+{
+    if ([path hasPrefix:@"/tg/file/"])
+    {
+        if (resultCode == ASStatusSuccess)
+        {
+            if (self.downloadCompletionBlock)
+                self.downloadCompletionBlock(((SGraphObjectNode *)result).object);
+        }
+        else
+        {
+            [ActionStageInstance() nodeRetrieveFailed:self.path];
+            self.downloadCompletionBlock = nil;
+        }
+    }
+    else if ([path hasPrefix:@"/tg/multipart-file/"])
+    {
+        if (resultCode == ASStatusSuccess)
+        {
+            if (self.downloadCompletionBlock)
+                self.downloadCompletionBlock(result);
+            
+            [[NSFileManager defaultManager] removeItemAtPath:_multipartFilePath error:nil];
+        }
+        else
+        {
+            [ActionStageInstance() nodeRetrieveFailed:self.path];
+            self.downloadCompletionBlock = nil;
+        }
+    }
+    else if ([path hasPrefix:@"/img/"])
+    {
+        if (resultCode == ASStatusSuccess)
+        {
+            [ActionStageInstance() actionCompleted:self.path result:result];
+        }
+        else
+        {
+            [ActionStageInstance() nodeRetrieveFailed:self.path];
+        }
+    }
+}
+
+- (void)cancel
+{
+    if (self.cancelToken != nil)
+    {
+        if ([self.cancelToken isKindOfClass:[NSOperation class]])
+            [((NSOperation *)self.cancelToken) cancel];
+        else
+            [TGTelegraphInstance cancelRequestByToken:self.cancelToken];
+        
+        self.cancelToken = nil;
+        self.downloadCompletionBlock = nil;
+    }
+    
+    [ActionStageInstance() removeWatcher:self];
+    
+    [super cancel];
+}
+
+@end

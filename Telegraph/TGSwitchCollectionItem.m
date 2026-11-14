@@ -1,0 +1,176 @@
+/*
+ * This is the source code of Telegram for iOS v. 1.1
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Peter Iakovlev, 2013.
+ */
+
+#import "TGSwitchCollectionItem.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/ASHandle.h"
+
+#import "TGSwitchCollectionItemView.h"
+#import "TGPresentation.h"
+#import "TGCollectionItemDescription.h"
+#import "../LightGramUI/Core/LGTheme.h"
+#import "../LightGramUI/Core/LGSettingsAppearance.h"
+#import "../LightGramUI/Core/LGProfileAppearance.h"
+
+@interface TGSwitchCollectionItem () <TGSwitchCollectionItemViewDelegate>
+{
+    
+}
+
+@end
+
+@implementation TGSwitchCollectionItem
+
+- (instancetype)initWithTitle:(NSString *)title isOn:(bool)isOn
+{
+    self = [super init];
+    if (self != nil)
+    {
+        self.highlightable = false;
+        self.selectable = false;
+        
+        _title = title;
+        _isOn = isOn;
+        
+        _isEnabled = true;
+    }
+    return self;
+}
+
+- (Class)itemViewClass
+{
+    if (_isPermission) {
+        return [TGPermissionSwitchCollectionItemView class];
+    } else {
+        return [TGSwitchCollectionItemView class];
+    }
+}
+
+- (CGSize)itemSizeForContainerSize:(CGSize)containerSize
+{
+    if (_brandedUserInfoStyle && false)
+        return CGSizeMake(containerSize.width, [LGTheme brandedTheme].profileAppearance.actionRowAppearance.controlRowHeight);
+    return CGSizeMake(containerSize.width, TGCollectionItemSwitchHeightWithDescription(_descriptionText, containerSize.width));
+}
+
+- (void)bindView:(TGCollectionItemView *)view
+{
+    [super bindView:view];
+    
+    [((TGSwitchCollectionItemView *)view) setFullSeparator:_fullSeparator];
+    [((TGSwitchCollectionItemView *)view) setTitle:_title];
+    [((TGSwitchCollectionItemView *)view) setDescriptionText:_descriptionText];
+    [((TGSwitchCollectionItemView *)view) setIsOn:_isOn animated:false];
+    TGSwitchCollectionItemView *switchView = (TGSwitchCollectionItemView *)view;
+    [switchView setIsEnabled:_isEnabled];
+    [switchView setIsLocked:_isLocked];
+    [((TGSwitchCollectionItemView *)view) setIconName:_iconName brandedUserInfoStyle:_brandedUserInfoStyle];
+    ((TGSwitchCollectionItemView *)view).delegate = self;
+}
+
+- (void)unbindView
+{
+    ((TGSwitchCollectionItemView *)[self boundView]).delegate = self;
+    
+    [super unbindView];
+}
+
+- (void)setTitle:(NSString *)title
+{
+    if (!TGStringCompare(_title, title))
+    {
+        _title = title;
+        
+        if ([self boundView] != nil)
+            [((TGSwitchCollectionItemView *)[self boundView]) setTitle:_title];
+    }
+}
+
+- (void)setDescriptionText:(NSString *)descriptionText
+{
+    if (!TGStringCompare(_descriptionText, descriptionText))
+    {
+        _descriptionText = descriptionText;
+        if ([self boundView] != nil)
+            [((TGSwitchCollectionItemView *)[self boundView]) setDescriptionText:_descriptionText];
+    }
+}
+
+- (void)setIsOn:(bool)isOn
+{
+    [self setIsOn:isOn animated:true];
+}
+
+- (void)setIsOn:(bool)isOn animated:(bool)animated
+{
+    if (_isOn != isOn)
+    {
+        _isOn = isOn;
+        
+        if ([self boundView] != nil)
+            [((TGSwitchCollectionItemView *)[self boundView]) setIsOn:_isOn animated:animated];
+    }
+}
+
+- (void)setIsEnabled:(bool)isEnabled
+{
+    if (_isEnabled != isEnabled)
+    {
+        _isEnabled = isEnabled;
+        
+        if ([self boundView] != nil)
+            [((TGSwitchCollectionItemView *)[self boundView]) setIsEnabled:_isEnabled];
+    }
+}
+
+- (void)setIsLocked:(bool)isLocked
+{
+    if (_isLocked == isLocked)
+        return;
+    _isLocked = isLocked;
+
+    TGSwitchCollectionItemView *boundSwitchView = (TGSwitchCollectionItemView *)[self boundView];
+    if (boundSwitchView != nil)
+        [boundSwitchView setIsLocked:_isLocked];
+}
+
+- (void)switchCollectionItemViewChangedValue:(TGSwitchCollectionItemView *)switchItemView isOn:(bool)isOn
+{
+    if (switchItemView == [self boundView])
+    {
+        if (_isLocked)
+        {
+            [switchItemView setIsOn:_isOn animated:true];
+            void (^pressedHandler)(TGSwitchCollectionItem *) = _lockedPressed;
+            if (pressedHandler != nil)
+                pressedHandler(self);
+            return;
+        }
+
+        _isOn = isOn;
+        
+        if (_toggled)
+            _toggled(isOn, self);
+        [_interfaceHandle requestAction:@"switchItemChanged" options:@{@"item": self, @"value": @(_isOn)}];
+    }
+}
+
+
+- (void)setIconName:(NSString *)iconName
+{
+    _iconName = iconName;
+    [(TGSwitchCollectionItemView *)self.boundView setIconName:_iconName brandedUserInfoStyle:_brandedUserInfoStyle];
+}
+
+- (void)setBrandedUserInfoStyle:(bool)brandedUserInfoStyle
+{
+    _brandedUserInfoStyle = brandedUserInfoStyle;
+    [(TGSwitchCollectionItemView *)self.boundView setIconName:_iconName brandedUserInfoStyle:_brandedUserInfoStyle];
+}
+
+@end

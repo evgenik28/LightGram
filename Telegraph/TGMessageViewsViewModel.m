@@ -1,0 +1,63 @@
+#import "TGMessageViewsViewModel.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import "TGMessageViewsView.h"
+
+@interface TGMessageViewsViewModel () {
+}
+
+@end
+
+@implementation TGMessageViewsViewModel
+
+- (Class)viewClass {
+    return [TGMessageViewsView class];
+}
+
+- (instancetype)init{
+    self = [super init];
+    if (self != nil) {
+        
+    }
+    return self;
+}
+
+- (void)bindViewToContainer:(UIView *)container viewStorage:(TGModernViewStorage *)viewStorage {
+    [super bindViewToContainer:container viewStorage:viewStorage];
+
+    [(TGMessageViewsView *)[self boundView] setPresentation:_presentation];
+    [(TGMessageViewsView *)[self boundView] setType:_type];
+    [(TGMessageViewsView *)[self boundView] setCount:_count];
+}
+
+- (void)setCount:(int32_t)count {
+    _count = count;
+    
+    [(TGMessageViewsView *)[self boundView] setCount:_count];    
+}
+
+- (bool)recordDrawing:(TGModernDrawingRecording *)recording {
+    if (![self drawsInContextWithImplementationOfClass:[TGMessageViewsViewModel class]])
+        return false;
+    if (!self.hidden)
+        [TGMessageViewsView recordDrawing:recording frame:self.bounds type:_type count:_count presentation:self.presentation];
+    return true;
+}
+
+- (void)drawInContext:(CGContextRef)context {
+    if (!self.hidden) {
+        [TGMessageViewsView drawInContext:context frame:self.bounds type:_type count:_count presentation:self.presentation];
+    }
+}
+
+- (void)sizeToFit {
+    CGSize size = [TGMessageViewsView sizeForCount:_count type:_type presentation:_presentation];
+    self.frame = CGRectMake(self.frame.origin.x, self.frame.origin.y, size.width, size.height);
+}
+
+- (CGFloat)baselineOffset {
+    return [TGMessageViewsView baselineOffsetForType:_type presentation:_presentation];
+}
+
+@end

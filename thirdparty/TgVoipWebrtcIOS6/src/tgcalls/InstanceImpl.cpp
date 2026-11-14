@@ -1,0 +1,267 @@
+#include "InstanceImpl.h"
+
+#include "LogSinkImpl.h"
+#include "Manager.h"
+#include "MediaManager.h"
+#ifndef TGCALLS_IOS6_AUDIO_ONLY
+#include "VideoCaptureInterfaceImpl.h"
+#include "VideoCapturerInterface.h"
+#endif
+
+#include <stdio.h>
+#include <syslog.h>
+
+#include "Ios6DiagnosticLog.h"
+
+namespace tgcalls {
+
+namespace {
+
+rtc::Thread *makeManagerThread() {
+	static std::unique_ptr<rtc::Thread> value = rtc::Thread::Create();
+	value->SetName("WebRTC-Manager", nullptr);
+	value->Start();
+	return value.get();
+}
+
+
+rtc::Thread *getManagerThread() {
+	static rtc::Thread *value = makeManagerThread();
+	return value;
+}
+
+} // namespace
+
+InstanceImpl::InstanceImpl(Descriptor &&descriptor)
+: _logSink(std::make_unique<LogSinkImpl>(descriptor.config.logPath)) {
+	OG_COMPAT_TRACE_STDERR("cxx.instance.init.enter servers=%lu outgoing=%d protocol=%d logPath=%s",
+		(unsigned long)descriptor.rtcServers.size(),
+		descriptor.encryptionKey.isOutgoing ? 1 : 0,
+		(int)descriptor.config.protocolVersion,
+		descriptor.config.logPath.data.c_str());
+	OG_COMPAT_TRACE_SYSLOG("cxx.instance.init.enter servers=%lu outgoing=%d protocol=%d",
+		(unsigned long)descriptor.rtcServers.size(),
+		descriptor.encryptionKey.isOutgoing ? 1 : 0,
+		(int)descriptor.config.protocolVersion);
+    rtc::LogMessage::LogToDebug(rtc::LS_INFO);
+    rtc::LogMessage::SetLogToStderr(false);
+	rtc::LogMessage::AddLogToStream(_logSink.get(), rtc::LS_INFO);
+
+    auto networkType = descriptor.initialNetworkType;
+
+    std::shared_ptr<Descriptor> descriptorPtr(new Descriptor());
+    descriptorPtr->version = descriptor.version;
+    descriptorPtr->config = descriptor.config;
+    descriptorPtr->persistentState = descriptor.persistentState;
+    descriptorPtr->endpoints = descriptor.endpoints;
+    descriptorPtr->proxy = std::move(descriptor.proxy);
+    descriptorPtr->rtcServers = descriptor.rtcServers;
+    descriptorPtr->initialNetworkType = descriptor.initialNetworkType;
+    descriptorPtr->encryptionKey = descriptor.encryptionKey;
+    descriptorPtr->mediaDevicesConfig = descriptor.mediaDevicesConfig;
+    descriptorPtr->videoCapture = descriptor.videoCapture;
+    descriptorPtr->stateUpdated = descriptor.stateUpdated;
+    descriptorPtr->signalBarsUpdated = descriptor.signalBarsUpdated;
+    descriptorPtr->audioLevelUpdated = descriptor.audioLevelUpdated;
+    descriptorPtr->remoteBatteryLevelIsLowUpdated = descriptor.remoteBatteryLevelIsLowUpdated;
+    descriptorPtr->remoteMediaStateUpdated = descriptor.remoteMediaStateUpdated;
+    descriptorPtr->remotePrefferedAspectRatioUpdated = descriptor.remotePrefferedAspectRatioUpdated;
+    descriptorPtr->signalingDataEmitted = descriptor.signalingDataEmitted;
+    descriptorPtr->createAudioDeviceModule = descriptor.createAudioDeviceModule;
+    descriptorPtr->createWrappedAudioDeviceModule = descriptor.createWrappedAudioDeviceModule;
+    descriptorPtr->initialInputDeviceId = descriptor.initialInputDeviceId;
+    descriptorPtr->initialOutputDeviceId = descriptor.initialOutputDeviceId;
+    descriptorPtr->directConnectionChannel = descriptor.directConnectionChannel;
+#ifdef TGCALLS_IOS6_AUDIO_ONLY
+    descriptorPtr->outgoingVideoSource = descriptor.outgoingVideoSource;
+    descriptorPtr->incomingVideoSink = descriptor.incomingVideoSink;
+#endif
+	OG_COMPAT_TRACE("cxx.instance.manager.thread.before");
+	_manager.reset(new ThreadLocalObject<Manager>(getManagerThread(), [descriptorPtr]() mutable {
+		OG_COMPAT_TRACE("cxx.instance.manager.construct.lambda");
+		return std::make_shared<Manager>(getManagerThread(), std::move(*descriptorPtr));
+	}));
+	OG_COMPAT_TRACE("cxx.instance.manager.thread.after");
+	_manager->perform([](Manager *manager) {
+		OG_COMPAT_TRACE("cxx.instance.manager.start.perform");
+		manager->start();
+	});
+
+	OG_COMPAT_TRACE("cxx.instance.setNetwork.before type=%d", (int)networkType);
+    setNetworkType(networkType);
+	OG_COMPAT_TRACE("cxx.instance.init.exit");
+}
+
+InstanceImpl::~InstanceImpl() {
+	rtc::LogMessage::RemoveLogToStream(_logSink.get());
+}
+
+void InstanceImpl::receiveSignalingData(const std::vector<uint8_t> &data) {
+	_manager->perform([data](Manager *manager) {
+		manager->receiveSignalingData(data);
+	});
+};
+
+void InstanceImpl::setVideoCapture(std::shared_ptr<VideoCaptureInterface> videoCapture) {
+    _manager->perform([videoCapture](Manager *manager) {
+        manager->setVideoCapture(videoCapture);
+    });
+}
+
+void InstanceImpl::sendVideoDeviceUpdated() {
+    _manager->perform([](Manager *manager) {
+        manager->sendVideoDeviceUpdated();
+    });
+}
+
+void InstanceImpl::setRequestedVideoAspect(float aspect) {
+    _manager->perform([aspect](Manager *manager) {
+        manager->setRequestedVideoAspect(aspect);
+    });
+}
+
+void InstanceImpl::setNetworkType(NetworkType networkType) {
+    bool isLowCostNetwork = false;
+    switch (networkType) {
+        case NetworkType::WiFi:
+        case NetworkType::Ethernet:
+            isLowCostNetwork = true;
+            break;
+        default:
+            break;
+    }
+
+    _manager->perform([isLowCostNetwork](Manager *manager) {
+        manager->setIsLocalNetworkLowCost(isLowCostNetwork);
+    });
+}
+
+void InstanceImpl::setMuteMicrophone(bool muteMicrophone) {
+	_manager->perform([muteMicrophone](Manager *manager) {
+		manager->setMuteOutgoingAudio(muteMicrophone);
+	});
+}
+
+#ifdef TGCALLS_IOS6_AUDIO_ONLY
+void InstanceImpl::setOutgoingVideoEnabled(bool enabled) {
+	_manager->perform([enabled](Manager *manager) {
+		manager->setOutgoingVideoEnabled(enabled);
+	});
+}
+#endif
+
+void InstanceImpl::setIncomingVideoOutput(std::weak_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> sink) {
+	_manager->perform([sink](Manager *manager) {
+		manager->setIncomingVideoOutput(sink);
+	});
+}
+
+void InstanceImpl::setAudioOutputGainControlEnabled(bool enabled) {
+}
+
+void InstanceImpl::setEchoCancellationStrength(int strength) {
+}
+
+void InstanceImpl::setAudioInputDevice(std::string id) {
+	_manager->perform([id](Manager *manager) {
+		manager->setAudioInputDevice(id);
+	});
+}
+
+void InstanceImpl::setAudioOutputDevice(std::string id) {
+	_manager->perform([id](Manager *manager) {
+		manager->setAudioOutputDevice(id);
+	});
+}
+
+void InstanceImpl::setInputVolume(float level) {
+	_manager->perform([level](Manager *manager) {
+		manager->setInputVolume(level);
+	});
+}
+
+void InstanceImpl::setOutputVolume(float level) {
+	_manager->perform([level](Manager *manager) {
+		manager->setOutputVolume(level);
+	});
+}
+
+void InstanceImpl::setAudioOutputDuckingEnabled(bool enabled) {
+	// TODO: not implemented
+}
+
+void InstanceImpl::addExternalAudioSamples(std::vector<uint8_t> &&samples) {
+    auto sharedSamples = std::make_shared<std::vector<uint8_t>>(std::move(samples));
+    _manager->perform([sharedSamples](Manager *target) mutable {
+        target->addExternalAudioSamples(std::move(*sharedSamples));
+    });
+}
+
+void InstanceImpl::setIsLowBatteryLevel(bool isLowBatteryLevel) {
+    _manager->perform([isLowBatteryLevel](Manager *manager) {
+        manager->setIsLowBatteryLevel(isLowBatteryLevel);
+    });
+}
+
+std::string InstanceImpl::getLastError() {
+	return "";  // TODO: not implemented
+}
+
+std::string InstanceImpl::getDebugInfo() {
+	return "";  // TODO: not implemented
+}
+
+int64_t InstanceImpl::getPreferredRelayId() {
+	return 0;  // we don't have endpoint ids
+}
+
+TrafficStats InstanceImpl::getTrafficStats() {
+	return TrafficStats{};  // TODO: not implemented
+}
+
+PersistentState InstanceImpl::getPersistentState() {
+	return PersistentState{};  // we dont't have such information
+}
+
+void InstanceImpl::stop(std::function<void(FinalState)> completion) {
+    RTC_LOG(LS_INFO) << "Stopping InstanceImpl";
+    
+    std::string debugLog = _logSink->result();
+
+    auto sharedLog = std::make_shared<std::string>(std::move(debugLog));
+    _manager->perform([completion, sharedLog](Manager *manager) {
+        manager->getNetworkStats([completion, sharedLog](TrafficStats stats, CallStats callStats) {
+            FinalState finalState;
+            finalState.debugLog = *sharedLog;
+            finalState.isRatingSuggested = false;
+            finalState.trafficStats = stats;
+            finalState.callStats = callStats;
+
+            completion(finalState);
+        });
+    });
+}
+
+int InstanceImpl::GetConnectionMaxLayer() {
+	return 92;
+}
+
+std::vector<std::string> InstanceImpl::GetVersions() {
+    std::vector<std::string> result;
+#ifdef TGCALLS_IOS6_AUDIO_ONLY
+    result.push_back("7.0.0");
+    result.push_back("8.0.0");
+    result.push_back("9.0.0");
+#else
+    result.push_back("2.7.7");
+    result.push_back("5.0.0");
+#endif
+    return result;
+}
+
+template <>
+bool Register<InstanceImpl>() {
+	return Meta::RegisterOne<InstanceImpl>();
+}
+
+} // namespace tgcalls

@@ -1,0 +1,351 @@
+#import "TGShareMenu.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import "TGAppDelegate.h"
+#import "../submodules/LegacyComponents/LegacyComponents/TGMenuSheetController.h"
+#import "../submodules/LegacyComponents/LegacyComponents/TGProgressWindow.h"
+
+#import "TGShareSearchItemView.h"
+#import "TGShareCollectionItemView.h"
+#import "TGShareSendButtonItemView.h"
+
+#import "TGDatabase.h"
+#import "TGTelegraph.h"
+#import "TGGlobalMessageSearchSignals.h"
+#import "TGChatSearchController.h"
+#import "TGDialogListController.h"
+
+#import "TGLegacyComponentsContext.h"
+#import "TGSendMessageSignals.h"
+
+#import "TGPresentation.h"
+#import "../LightGramPlatform/LGPlatformUIKit.h"
+#import "TGPaidMessagesConfirmation.h"
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+@interface TGDocumentInteractionControllerHandle : NSObject <UIDocumentInteractionControllerDelegate>
+{
+    UIDocumentInteractionController *_controller;
+    id _selfRetain;
+}
+
+- (instancetype)initWithController:(UIDocumentInteractionController *)controller;
+
+@end
+#endif
+
+@implementation TGShareMenu
+
++ (TGMenuSheetController *)presentChannelShareMenuInParentController:(TGViewController *)parentController conversation:(TGConversation *)conversation sourceView:(UIView *)sourceView sourceRect:(CGRect (^)(void))sourceRect
+{
+    if (conversation.username.length == 0)
+        return nil;
+    
+    NSString *linkString = [NSString stringWithFormat:@"https://t.me/%@", conversation.username];
+    NSString *externalString = linkString;
+    if (conversation.about.length > 0)
+    {
+        NSString *aboutText = conversation.about;
+        if (aboutText.length > 200)
+            aboutText = [[aboutText substringToIndex:200] stringByAppendingString:@"..."];
+        
+        externalString = [NSString stringWithFormat:@"%@ %@", aboutText, linkString];
+    }
+    
+    return [self presentInParentController:parentController menuController:nil buttonTitle:TGLocalized(@"ShareMenu.CopyShareLink") buttonAction:^
+    {
+        [[UIPasteboard generalPasteboard] setString:linkString];
+    } shareAction:^(NSArray *peerIds, NSString *caption)
+    {
+        [[TGShareSignals shareText:linkString toPeerIds:peerIds caption:caption] startWithNext:nil];
+        
+        [[[TGProgressWindow alloc] init] dismissWithSuccess];
+    } externalShareItemSignal:[SSignal single:externalString] sourceView:sourceView sourceRect:sourceRect barButtonItem:nil];
+}
+
++ (TGMenuSheetController *)presentInParentController:(TGViewController *)parentController menuController:(TGMenuSheetController *)menuController buttonTitle:(NSString *)buttonTitle buttonAction:(void (^)(void))buttonAction shareAction:(void (^)(NSArray *peerIds, NSString *caption))shareAction externalShareItemSignal:(id)externalShareItemSignal sourceView:(UIView *)sourceView sourceRect:(CGRect (^)(void))sourceRect barButtonItem:(UIBarButtonItem *)barButtonItem
+{
+    void (^externalShareBlock)(TGViewController *, UIView *, CGRect (^)(void)) = ^(__unused TGViewController *viewController, UIView *sourceView, CGRect (^sourceRect)(void))
+    {
+        TGProgressWindow *progressWindow = [[TGProgressWindow alloc] init];
+        [progressWindow showWithDelay:0.2];
+        
+        [[externalShareItemSignal onDispose:^
+        {
+            [progressWindow dismiss:true];
+        }] startWithNext:^(id next)
+        {
+            if (next == nil)
+                return;
+            
+            NSArray *items = [next isKindOfClass:[NSArray class]] ? next : @[next];
+            if (items.count == 0)
+                return;
+            
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+            if (items.count == 1 && [items[0] isKindOfClass:[NSURL class]] && [(NSURL *)items[0] isFileURL])
+            {
+                UIDocumentInteractionController *interactionController = [UIDocumentInteractionController interactionControllerWithURL:items[0]];
+                if (barButtonItem != nil)
+                    [interactionController presentOptionsMenuFromBarButtonItem:barButtonItem animated:true];
+                else
+                    [interactionController presentOptionsMenuFromRect:sourceRect() inView:sourceView animated:true];
+                
+                __unused id handle = [[TGDocumentInteractionControllerHandle alloc] initWithController:interactionController];
+            }
+            else
+#endif
+            {
+                if (TGShareItemsViaLegacyPasteboard(items))
+                {
+                    [progressWindow dismiss:true];
+                    return;
+                }
+
+                UIView *activitySourceView = nil;
+                CGRect activitySourceRect = CGRectZero;
+                UIBarButtonItem *activityBarButtonItem = nil;
+                if (iosMajorVersion() >= 8 && TGAppDelegateInstance.rootController.currentSizeClass == UIUserInterfaceSizeClassRegular && (sourceView != nil || barButtonItem != nil))
+                {
+                    if (barButtonItem != nil)
+                        activityBarButtonItem = barButtonItem;
+                    else
+                    {
+                        activitySourceView = sourceView;
+                        if (sourceRect != nil)
+                            activitySourceRect = sourceRect();
+                    }
+                }
+                LGPlatformPresentActivityItems(viewController, items, activitySourceView, activitySourceRect, activityBarButtonItem, UIPopoverArrowDirectionAny, nil);
+            }
+            
+            [progressWindow dismiss:true];
+        }];
+    };
+    
+    if (shareAction == nil && externalShareItemSignal != nil)
+    {
+        externalShareBlock(parentController, sourceView, sourceRect);
+        return nil;
+    }
+    
+    TGMenuSheetController *controller = nil;
+    if (menuController == nil)
+    {
+        controller = [[TGMenuSheetController alloc] initWithContext:[TGLegacyComponentsContext shared] dark:false];
+        controller.dismissesByOutsideTap = true;
+        controller.hasSwipeGesture = true;
+        controller.narrowInLandscape = true;
+        controller.followsKeyboard = true;
+    }
+    else
+    {
+        controller = menuController;
+        controller.followsKeyboard = true;
+    }
+    controller.permittedArrowDirections = UIPopoverArrowDirectionAny;
+    controller.sourceRect = sourceRect;
+    controller.barButtonItem = barButtonItem;
+    
+    NSMutableArray *itemViews = [[NSMutableArray alloc] init];
+    
+    TGShareCollectionItemView *collectionItem = [[TGShareCollectionItemView alloc] init];
+    collectionItem.presentation = TGPresentation.current;
+    collectionItem.hasActionButton = (buttonTitle.length > 0);
+   
+    __weak TGMenuSheetController *weakController = controller;
+    TGShareSearchItemView *searchItem = [[TGShareSearchItemView alloc] init];
+    searchItem.presentation = TGPresentation.current;
+    
+    if (externalShareItemSignal != nil)
+    {
+        [searchItem setExternalButtonHidden:false];
+        searchItem.externalPressed = ^
+        {
+            __strong TGMenuSheetController *strongController = weakController;
+            if (strongController == nil)
+                return;
+            
+            [strongController dismissAnimated:true manual:true];
+            
+            externalShareBlock((TGViewController *)strongController.parentController, strongController.sourceView, strongController.sourceRect);
+        };
+    }
+
+    __weak TGShareCollectionItemView *weakCollectionItem = collectionItem;
+    TGShareSendButtonItemView *sendItem = [[TGShareSendButtonItemView alloc] initWithActionTitle:buttonTitle action:^
+    {
+        __strong TGMenuSheetController *strongController = weakController;
+        if (strongController == nil)
+            return;
+        
+        [strongController dismissAnimated:true manual:true];
+        
+        if (buttonAction != nil)
+            buttonAction();
+    } sendAction:^(NSString *caption)
+    {
+        __strong TGMenuSheetController *strongController = weakController;
+        __strong TGShareCollectionItemView *strongCollectionItem = weakCollectionItem;
+        if (strongController == nil || strongCollectionItem == nil || shareAction == nil)
+            return;
+        
+        NSArray *peerIds = [strongCollectionItem.peerIds copy];
+        [strongController dismissAnimated:true];
+        
+        [TGPaidMessagesConfirmation confirmSendingToPeerIds:peerIds messagesPerPeer:caption.length != 0 ? 2 : 1 controller:parentController completion:^(bool confirmed)
+        {
+            if (!confirmed)
+                return;
+            shareAction(peerIds, caption);
+            if ([peerIds containsObject:@(TGTelegraphInstance.clientUserId)])
+                [TGAppDelegateInstance.rootController.dialogListController requestSavedMessagesTooltip];
+        }];
+    }];
+    sendItem.presentation = TGPresentation.current;
+    
+    __weak TGShareSendButtonItemView *weakSendItem = sendItem;
+    searchItem.didBeginSearch = ^
+    {
+        __strong TGShareCollectionItemView *strongCollectionItem = weakCollectionItem;
+        __strong TGShareSendButtonItemView *strongSendItem = weakSendItem;
+        if (strongCollectionItem == nil || strongSendItem == nil)
+            return;
+        
+        [strongCollectionItem setExpanded];
+        [strongCollectionItem searchBegan];
+        [strongSendItem setCollapsed:true];
+    };
+    
+    __weak TGShareSearchItemView *weakSearchItem = searchItem;
+    searchItem.didEndSearch = ^(bool reload)
+    {
+        __strong TGShareCollectionItemView *strongCollectionItem = weakCollectionItem;
+        __strong TGShareSendButtonItemView *strongSendItem = weakSendItem;
+        if (strongCollectionItem == nil || strongSendItem == nil)
+            return;
+        
+        [strongCollectionItem setSearchQuery:nil updateActivity:^(bool active)
+        {
+            __strong TGShareSearchItemView *strongSearchItem = weakSearchItem;
+            if (strongSearchItem == nil)
+                return;
+            
+            [strongSearchItem setShowActivity:active];
+        }];
+        [strongCollectionItem searchEnded:reload];
+        [strongSendItem setCollapsed:false];
+    };
+    
+    searchItem.textChanged = ^(NSString *searchText)
+    {
+        __strong TGShareCollectionItemView *strongCollectionItem = weakCollectionItem;
+        if (strongCollectionItem == nil)
+            return;
+        
+        [strongCollectionItem setSearchQuery:searchText updateActivity:^(bool active)
+        {
+            __strong TGShareSearchItemView *strongSearchItem = weakSearchItem;
+            if (strongSearchItem == nil)
+                return;
+            
+            [strongSearchItem setShowActivity:active];
+        }];
+    };
+    
+    sendItem.didBeginEditingComment = ^
+    {
+        __strong TGShareCollectionItemView *strongCollectionItem = weakCollectionItem;
+        if (strongCollectionItem != nil)
+        {
+            [strongCollectionItem setExpanded];
+            [strongCollectionItem requestMenuLayoutUpdate];
+        }
+    };
+    
+    collectionItem.selectionChanged = ^(NSArray *selectedPeerIds, NSDictionary *peers)
+    {
+        __strong TGShareSendButtonItemView *strongSendItem = weakSendItem;
+        __strong TGShareSearchItemView *strongSearchItem = weakSearchItem;
+        if (strongSendItem == nil || strongSearchItem == nil)
+            return;
+        
+        [strongSendItem setSelectedCount:selectedPeerIds.count];
+        [strongSearchItem setSelectedPeerIds:selectedPeerIds peers:peers];
+    };
+    
+    collectionItem.searchResultSelected = ^
+    {
+        __strong TGShareSearchItemView *strongSearchItem = weakSearchItem;
+        if (strongSearchItem != nil)
+            [searchItem finishSearch];
+    };
+    
+    collectionItem.dismissCommentView = ^
+    {
+        __strong TGShareSendButtonItemView *strongSendItem = weakSendItem;
+        if (strongSendItem != nil)
+            [strongSendItem dismissCommentView];
+    };
+    
+    [itemViews addObject:searchItem];
+    [itemViews addObject:collectionItem];
+    [itemViews addObject:sendItem];
+    
+    TGMenuSheetButtonItemView *cancelButton = [[TGMenuSheetButtonItemView alloc] initWithTitle:TGLocalized(@"Common.Cancel") type:TGMenuSheetButtonTypeCancel action:^
+    {
+        __strong TGMenuSheetController *strongController = weakController;
+        [strongController dismissAnimated:true manual:true];
+    }];
+    [itemViews addObject:cancelButton];
+    
+    if (menuController == nil)
+    {
+        [controller setItemViews:itemViews];
+        [controller presentInViewController:parentController sourceView:sourceView animated:true];
+    }
+    else
+    {
+        [controller setItemViews:itemViews animated:true];
+    }
+    
+    return controller;
+}
+
+@end
+
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+@implementation TGDocumentInteractionControllerHandle
+
+- (instancetype)initWithController:(UIDocumentInteractionController *)controller
+{
+    self = [super init];
+    if (self != nil)
+    {
+        _controller = controller;
+        _controller.delegate = self;
+        _selfRetain = self;
+    }
+    return self;
+}
+
+- (void)dispose
+{
+    _controller.delegate = nil;
+    _selfRetain = nil;
+}
+
+- (void)documentInteractionControllerDidDismissOptionsMenu:(UIDocumentInteractionController *)__unused controller
+{
+    [self dispose];
+}
+
+- (void)documentInteractionController:(UIDocumentInteractionController *)__unused controller didEndSendingToApplication:(NSString *)__unused application
+{
+    [self dispose];
+}
+
+@end
+#endif

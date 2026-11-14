@@ -1,0 +1,68 @@
+#import <UIKit/UIKit.h>
+
+@class LGSurfaceStyle;
+
+@interface LGSettingsAppearance : NSObject
+@property (nonatomic) CGFloat rowHeight;
+@property (nonatomic) CGFloat groupedHorizontalInset;
+@property (nonatomic) CGFloat iconX;
+@property (nonatomic) CGFloat iconSize;
+@property (nonatomic) CGFloat titleX;
+@property (nonatomic) CGFloat titleY;
+@property (nonatomic) CGFloat titleHeight;
+@property (nonatomic) CGFloat disclosureRight;
+@property (nonatomic) CGFloat controlRight;
+@property (nonatomic) CGFloat verticalOffset;
+@property (nonatomic) CGFloat disclosureVerticalOffset;
+@property (nonatomic) CGFloat accessorySpacing;
+@property (nonatomic) CGFloat titleTrailingSpacing;
+@property (nonatomic) CGFloat variantVerticalOffset;
+@property (nonatomic) CGFloat iconShadowOpacity;
+@property (nonatomic) CGFloat iconShadowRadius;
+@property (nonatomic) CGSize iconShadowOffset;
+@property (nonatomic, retain) UIFont *titleFont;
+@property (nonatomic, retain) UIFont *variantFont;
+@property (nonatomic, retain) UIColor *titleColor;
+@property (nonatomic, retain) UIColor *variantColor;
+@property (nonatomic, retain) UIColor *destructiveColor;
+@property (nonatomic, retain) UIColor *shadowColor;
+@property (nonatomic) CGSize titleShadowOffset;
+@property (nonatomic, retain) UIColor *collectionBackgroundColor;
+@property (nonatomic) BOOL hidesInlineSeparator;
+@property (nonatomic) BOOL blockButtonTitleCentered;
+@property (nonatomic) BOOL blockButtonShowsDisclosure;
+@property (nonatomic, copy) NSString *iconResourceDirectory;
+@property (nonatomic, copy) NSString *disclosureResourceDirectory;
+@property (nonatomic, copy) NSString *disclosureAssetName;
+@property (nonatomic, copy) NSArray *disclosureColors;
+@property (nonatomic, copy) NSArray *disclosureLocations;
+@property (nonatomic, copy) NSString *groupedResourceDirectory;
+@property (nonatomic, copy) NSString *groupedSingleAssetName;
+@property (nonatomic, copy) NSString *groupedTopAssetName;
+@property (nonatomic, copy) NSString *groupedMiddleAssetName;
+@property (nonatomic, copy) NSString *groupedBottomAssetName;
+@property (nonatomic, copy) NSString *groupedSelectedSuffix;
+@property (nonatomic, retain) LGSurfaceStyle *groupedSingleSurfaceStyle;
+@property (nonatomic, retain) LGSurfaceStyle *groupedTopSurfaceStyle;
+@property (nonatomic, retain) LGSurfaceStyle *groupedMiddleSurfaceStyle;
+@property (nonatomic, retain) LGSurfaceStyle *groupedBottomSurfaceStyle;
+@property (nonatomic, retain) UIColor *groupedSelectedOverlayColor;
+@property (nonatomic, retain) LGSurfaceStyle *screenBackgroundSurfaceStyle;
+@property (nonatomic) UIOffset navigationButtonOffset;
+@property (nonatomic, retain) UIColor *groupedFillColor;
+@property (nonatomic, retain) UIColor *groupedSelectedFillColor;
+@property (nonatomic, retain) UIColor *accentColor;
+@property (nonatomic, retain) UIColor *commentColor;
+@property (nonatomic, retain) UIFont *headerFont;
+@property (nonatomic, retain) UIColor *headerColor;
+@property (nonatomic, retain) UIColor *headerShadowColor;
+@property (nonatomic) CGSize headerShadowOffset;
+@property (nonatomic) CGFloat headerX;
+@property (nonatomic, retain) UIColor *switchColor;
+@property (nonatomic) CGFloat controlRowHeight;
+@property (nonatomic) CGFloat controlRowContentOffset;
+@property (nonatomic, copy) NSArray *iconColors;
+@property (nonatomic, copy) NSArray *iconLocations;
++ (LGSettingsAppearance *)brandedAppearanceDark:(BOOL)dark;
++ (LGSettingsAppearance *)brandedProfileActionAppearanceDark:(BOOL)dark;
+@end

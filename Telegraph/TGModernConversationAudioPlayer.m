@@ -1,0 +1,341 @@
+/*
+ * This is the source code of Telegram for iOS v. 1.1
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Peter Iakovlev, 2013.
+ */
+
+#import "TGModernConversationAudioPlayer.h"
+#import "LGFeatureProbe.h"
+#import "../LightGramPlatform/LGPlatformUIKit.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/TGTimerTarget.h"
+
+#import "TGModernConversationAudioPlayerContext.h"
+#import "LGMediaStreamServer.h"
+
+
+@interface TGModernConversationAudioPlayer () <TGAudioPlayerDelegate>
+{
+    NSString *_filePath;
+    NSString *_pathExtension;
+    NSTimeInterval _knownDuration;
+    bool _music;
+    bool _controlAudioSession;
+    
+    CGFloat _rate;
+    
+    NSTimer *_timer;
+    
+    TGModernConversationAudioPlayerContext *_inlineMediaContext;
+    
+    bool _isPaused;
+    bool _playbackEnded;
+}
+
+@end
+
+@implementation TGModernConversationAudioPlayer
+
+- (instancetype)initWithFilePath:(NSString *)filePath music:(bool)music controlAudioSession:(bool)controlAudioSession
+{
+    self = [super init];
+    if (self != nil)
+    {
+        _filePath = filePath;
+        _music = music;
+        _controlAudioSession = controlAudioSession;
+        _rate = 1.0f;
+        
+        _audioPlayer = [TGAudioPlayer audioPlayerForPath:filePath music:music controlAudioSession:controlAudioSession];
+        _audioPlayer.delegate = self;
+        _queue = [SQueue mainQueue];
+    }
+    return self;
+}
+
+- (instancetype)initWithStream:(LGMediaStream *)stream pathExtension:(NSString *)pathExtension duration:(NSTimeInterval)duration music:(bool)music controlAudioSession:(bool)controlAudioSession
+{
+    self = [super init];
+    if (self != nil)
+    {
+        _stream = stream;
+        _pathExtension = [pathExtension copy];
+        _knownDuration = duration;
+        _music = music;
+        _controlAudioSession = controlAudioSession;
+        _rate = 1.0f;
+        
+        _audioPlayer = [self makeAudioPlayer];
+        _audioPlayer.delegate = self;
+        _queue = [SQueue mainQueue];
+    }
+    return self;
+}
+
+- (TGAudioPlayer *)makeAudioPlayer
+{
+    if (_stream != nil)
+        return [TGAudioPlayer audioPlayerForStream:_stream pathExtension:_pathExtension music:_music controlAudioSession:_controlAudioSession];
+    return [TGAudioPlayer audioPlayerForPath:_filePath music:_music controlAudioSession:_controlAudioSession];
+}
+
+- (bool)isStreaming
+{
+    return _stream != nil;
+}
+
+- (void)dealloc
+{
+    [self cleanup];
+    [_stream invalidate];
+}
+
+- (void)cleanup
+{
+    if (_timer != nil)
+    {
+        [_timer invalidate];
+        _timer = nil;
+    }
+    
+    if (_audioPlayer != nil)
+    {
+        _audioPlayer.delegate = nil;
+        [_audioPlayer stop];
+        _audioPlayer = nil;
+    }
+}
+
+- (TGModernViewInlineMediaContext *)inlineMediaContext
+{
+    if (_inlineMediaContext == nil)
+        _inlineMediaContext = [[TGModernConversationAudioPlayerContext alloc] initWithAudioPlayer:self];
+    
+    return _inlineMediaContext;
+}
+
+- (void)setRate:(CGFloat)rate
+{
+    _rate = rate;
+    if (_audioPlayer != nil) {
+        [_audioPlayer setRate:_rate];
+    }
+}
+
+- (void)play
+{
+    if (_audioPlayer == nil) {
+        _audioPlayer = [self makeAudioPlayer];
+        [_audioPlayer setRate:_rate];
+        _audioPlayer.delegate = self;
+    }
+    
+    _isPaused = false;
+    _playbackEnded = false;
+    
+    if (_timer != nil)
+    {
+        [_timer invalidate];
+        _timer = nil;
+    }
+    
+    [_audioPlayer play];
+    
+    [self updateCurrentTime];
+    _timer = [TGTimerTarget scheduledMainThreadTimerWithTarget:self action:@selector(updateCurrentTime) interval:(1.0 / 30.0) repeat:true];
+}
+
+- (void)play:(float)playbackPosition
+{
+    _isPaused = false;
+    _playbackEnded = false;
+    
+    if (_timer != nil)
+    {
+        [_timer invalidate];
+        _timer = nil;
+    }
+    
+    NSTimeInterval preciseDuration = [self duration];
+    if (preciseDuration > 0.1)
+    {
+        [_audioPlayer playFromPosition:MAX(0.0, MIN(preciseDuration, playbackPosition * preciseDuration))];
+        [_inlineMediaContext postUpdatePlaybackPosition:true];
+    }
+    else
+    {
+        [_audioPlayer play];
+        [self updateCurrentTime];
+    }
+    
+    _timer = [TGTimerTarget scheduledMainThreadTimerWithTarget:self action:@selector(updateCurrentTime) interval:(1.0 / 30.0) repeat:true];
+}
+
+- (void)updateCurrentTime
+{
+    [_inlineMediaContext postUpdatePlaybackPosition:false];
+}
+
+- (void)pause {
+    [self pause:^{}];
+}
+
+- (void)pause:(void (^)())completion
+{
+    _isPaused = true;
+    
+    if (_audioPlayer != nil)
+        [_audioPlayer pause:completion];
+    else if (completion != nil)
+        completion();
+    
+    if (_timer != nil)
+    {
+        [_timer invalidate];
+        _timer = nil;
+    }
+    
+    [_inlineMediaContext postUpdatePlaybackPosition:false];
+}
+
+- (void)stop
+{
+    _isPaused = true;
+    
+    [_audioPlayer stop];
+    
+    if (_timer != nil)
+    {
+        [_timer invalidate];
+        _timer = nil;
+    }
+    
+    [self cleanup];
+}
+
+- (bool)replaceWithFilePath:(NSString *)filePath
+{
+    bool replaceable = _music && _audioPlayer != nil && _stream == nil;
+    if (!replaceable || ![_audioPlayer replaceWithPath:filePath])
+        return false;
+    _filePath = [filePath copy];
+    _isPaused = false;
+    _playbackEnded = false;
+    return true;
+}
+
+- (bool)prepareNextFilePath:(NSString *)filePath
+{
+    bool preparable = _music && _audioPlayer != nil && _stream == nil;
+    return preparable && [_audioPlayer prepareNextPath:filePath];
+}
+
+- (float)playbackPosition
+{
+    return [self playbackPositionSync:false];
+}
+
+- (float)playbackPositionSync:(bool)sync
+{
+    NSTimeInterval duration = [self duration];
+    if (duration > 0.1)
+        return (float)([_audioPlayer currentPositionSync:sync] / duration);
+    
+    return 0.0f;
+}
+
+- (NSTimeInterval)absolutePlaybackPosition {
+    return [_audioPlayer currentPositionSync:true];
+}
+
+- (NSTimeInterval)duration
+{
+    NSTimeInterval duration = [_audioPlayer duration];
+    return duration > 0.1 ? duration : _knownDuration;
+}
+
+- (bool)isPaused
+{
+    return _isPaused;
+}
+
+- (bool)isFinished
+{
+    return _playbackEnded ? true : false;
+}
+
+- (void)audioPlayerDidPause:(TGAudioPlayer *)__unused audioPlayer {
+    TGDispatchOnMainThread(^{
+        _isPaused = true;
+        
+        if (_timer != nil)
+        {
+            [_timer invalidate];
+            _timer = nil;
+        }
+        
+        [_inlineMediaContext postUpdatePlaybackPosition:false];
+    });
+}
+
+- (void)audioPlayerDidFinishPlaying:(TGAudioPlayer *)__unused audioPlayer
+{
+    UIApplication *application = [UIApplication sharedApplication];
+    __block LGPlatformBackgroundTaskIdentifier backgroundTask = LGPlatformBackgroundTaskInvalid;
+    if ([application applicationState] != UIApplicationStateActive)
+    {
+        dispatch_block_t beginTask = ^
+        {
+            backgroundTask = LGPlatformBeginBackgroundTask(application, ^
+            {
+                LGPlatformBackgroundTaskIdentifier task = backgroundTask;
+                backgroundTask = LGPlatformBackgroundTaskInvalid;
+                if (task != LGPlatformBackgroundTaskInvalid)
+                    LGPlatformEndBackgroundTask(application, task);
+            });
+        };
+        if (![NSThread isMainThread])
+            dispatch_sync(dispatch_get_main_queue(), beginTask);
+        else
+            beginTask();
+    }
+
+    TGDispatchOnMainThread(^
+    {
+        _isPaused = true;
+        _playbackEnded = true;
+        
+        if (_timer != nil)
+        {
+            [_timer invalidate];
+            _timer = nil;
+        }
+        
+        [_inlineMediaContext postUpdatePlaybackPosition:false];
+        
+        if (_music == false)
+            [self cleanup];
+        
+        id<TGModernConversationAudioPlayerDelegate> delegate = _delegate;
+        if ([delegate respondsToSelector:@selector(audioPlayerDidFinish)])
+            [delegate audioPlayerDidFinish];
+
+        if (backgroundTask != LGPlatformBackgroundTaskInvalid)
+        {
+            const int64_t releaseDelay = 8 * NSEC_PER_SEC;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, releaseDelay), dispatch_get_main_queue(), ^
+            {
+                LGPlatformBackgroundTaskIdentifier task = backgroundTask;
+                backgroundTask = LGPlatformBackgroundTaskInvalid;
+                if (task != LGPlatformBackgroundTaskInvalid)
+                {
+                    LGPlatformEndBackgroundTask(application, task);
+                }
+            });
+        }
+    });
+}
+
+@end

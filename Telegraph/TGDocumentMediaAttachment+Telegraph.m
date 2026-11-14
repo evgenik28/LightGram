@@ -1,0 +1,643 @@
+/*
+ * This is the source code of Telegram for iOS v. 1.1
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Peter Iakovlev, 2013.
+ */
+
+#import "TGDocumentMediaAttachment+Telegraph.h"
+
+#import "TGImageInfo+Telegraph.h"
+
+#import "TGAppDelegate.h"
+
+#import "TLDocumentAttribute$documentAttributeAudio.h"
+
+@interface OGCompatThumbFacts : NSObject
+
+@property (nonatomic) CGSize dimensions;
+@property (nonatomic) int32_t fileSize;
+@property (nonatomic, strong) NSString *type;
+@property (nonatomic, strong) NSData *bytes;
+
++ (instancetype)factsForSize:(TLPhotoSize *)size;
+
+@end
+
+@implementation OGCompatThumbFacts
+
++ (instancetype)factsForSize:(TLPhotoSize *)size
+{
+    OGCompatThumbFacts *facts = [[OGCompatThumbFacts alloc] init];
+    if ([size isKindOfClass:[TLPhotoSize$photoSize class]])
+    {
+        TLPhotoSize$photoSize *plain = (TLPhotoSize$photoSize *)size;
+        facts.dimensions = CGSizeMake(plain.w, plain.h);
+        facts.fileSize = plain.size;
+        facts.type = plain.type;
+    }
+    else if ([size isKindOfClass:[TLPhotoSize$photoCachedSize class]])
+    {
+        TLPhotoSize$photoCachedSize *cached = (TLPhotoSize$photoCachedSize *)size;
+        facts.dimensions = CGSizeMake(cached.w, cached.h);
+        facts.bytes = cached.bytes;
+        facts.fileSize = (int32_t)cached.bytes.length;
+        facts.type = cached.type;
+    }
+    return facts;
+}
+
+@end
+
+static NSString *OGCompatDocumentThumbUrl(TLDocument$document *document, TLPhotoSize *size)
+{
+    if (document == nil || size == nil || document.dc_id == 0 || document.n_id == 0)
+        return nil;
+    
+    OGCompatThumbFacts *facts = [OGCompatThumbFacts factsForSize:size];
+    NSString *sizeKey = facts.type ?: @"";
+    if (sizeKey.length == 0)
+        return nil;
+    NSString *reference = document.file_reference.length == 0 ? @"" : [document.file_reference stringByEncodingInHex];
+    return [NSString stringWithFormat:@"documentthumb:%d:%lld:%lld:%d:%@:%@", document.dc_id, document.n_id, document.access_hash, facts.fileSize, sizeKey, reference];
+}
+
+static TLDocumentAttribute$documentAttributeVideo *TGTelegraphDocumentVideoAttribute(TLDocument$document *document)
+{
+    for (id attribute in document.attributes)
+    {
+        if ([attribute isKindOfClass:[TLDocumentAttribute$documentAttributeVideo class]])
+            return attribute;
+    }
+    return nil;
+}
+
+@implementation TGDocumentMediaAttachment (Telegraph)
+
++ (NSArray *)parseAttribtues:(NSArray *)descs {
+    NSMutableArray *attributes = [[NSMutableArray alloc] init];
+    for (id attribute in descs)
+    {
+        if ([attribute isKindOfClass:[TLDocumentAttribute$documentAttributeFilename class]])
+        {
+            TLDocumentAttribute$documentAttributeFilename *concreteAttribute = attribute;
+            [attributes addObject:[[TGDocumentAttributeFilename alloc] initWithFilename:concreteAttribute.file_name]];
+        }
+        else if ([attribute isKindOfClass:[TLDocumentAttribute$documentAttributeAnimated class]])
+        {
+            [attributes addObject:[[TGDocumentAttributeAnimated alloc] init]];
+        }
+        else if ([attribute isKindOfClass:[TLDocumentAttribute$documentAttributeImageSize class]])
+        {
+            TLDocumentAttribute$documentAttributeImageSize *concreteAttribute = attribute;
+            [attributes addObject:[[TGDocumentAttributeImageSize alloc] initWithSize:CGSizeMake(concreteAttribute.w, concreteAttribute.h)]];
+        }
+        else if ([attribute isKindOfClass:[TLDocumentAttribute$documentAttributeStickerMeta class]])
+        {
+            TLDocumentAttribute$documentAttributeStickerMeta *concreteAttribute = (TLDocumentAttribute$documentAttributeStickerMeta *)attribute;
+            id<TGStickerPackReference> packReference = nil;
+            if ([concreteAttribute.stickerset isKindOfClass:[TLInputStickerSet$inputStickerSetID class]])
+            {
+                TLInputStickerSet$inputStickerSetID *concreteStickerset = (TLInputStickerSet$inputStickerSetID *)concreteAttribute.stickerset;
+                packReference = [[TGStickerPackIdReference alloc] initWithPackId:concreteStickerset.n_id packAccessHash:concreteStickerset.access_hash shortName:nil];
+            }
+            else if ([concreteAttribute.stickerset isKindOfClass:[TLInputStickerSet$inputStickerSetShortName class]])
+            {
+                TLInputStickerSet$inputStickerSetShortName *concreteStickerset = (TLInputStickerSet$inputStickerSetShortName *)concreteAttribute.stickerset;
+                packReference = [[TGStickerPackShortnameReference alloc] initWithShortName:concreteStickerset.short_name];
+            }
+            TGStickerMaskDescription *maskDescription = nil;
+            if (concreteAttribute.mask_coords != nil) {
+                maskDescription = [[TGStickerMaskDescription alloc] initWithN:concreteAttribute.mask_coords.n point:CGPointMake((CGFloat)concreteAttribute.mask_coords.x, (CGFloat)concreteAttribute.mask_coords.y) zoom:concreteAttribute.mask_coords.zoom];
+            }
+            
+            [attributes addObject:[[TGDocumentAttributeSticker alloc] initWithAlt:concreteAttribute.alt packReference:packReference mask:maskDescription]];
+        }
+        else if ([attribute isKindOfClass:[TLDocumentAttribute$documentAttributeVideo class]])
+        {
+            TLDocumentAttribute$documentAttributeVideo *concreteAttribute = (TLDocumentAttribute$documentAttributeVideo *)attribute;
+            [attributes addObject:[[TGDocumentAttributeVideo alloc] initWithRoundMessage:(concreteAttribute.flags & (1 << 0)) size:CGSizeMake(concreteAttribute.w, concreteAttribute.h) duration:concreteAttribute.duration]];
+        }
+        else if ([attribute isKindOfClass:[TLDocumentAttribute$documentAttributeAudio class]])
+        {
+            TLDocumentAttribute$documentAttributeAudio *concreteAttribute = attribute;
+            
+            TGAudioWaveform *waveform = nil;
+            if (concreteAttribute.waveform.length != 0) {
+                waveform = [[TGAudioWaveform alloc] initWithBitstream:concreteAttribute.waveform bitsPerSample:5];
+            }
+            
+            [attributes addObject:[[TGDocumentAttributeAudio alloc] initWithIsVoice:concreteAttribute.is_voice title:concreteAttribute.title performer:concreteAttribute.performer duration:concreteAttribute.duration waveform:waveform]];
+        }
+    }
+    return attributes;
+}
+
++ (NSString *)strippedThumbnailUrlForTelegraphDocumentDesc:(TLDocument *)desc
+{
+    if (![desc isKindOfClass:[TLDocument$document class]])
+        return nil;
+    
+    TLDocument$document *concreteDocument = (TLDocument$document *)desc;
+    for (id thumbnail in concreteDocument.thumbs)
+    {
+        if (![thumbnail isKindOfClass:[TLPhotoSize$photoCachedSize class]])
+            continue;
+        
+        TLPhotoSize$photoCachedSize *cachedSize = (TLPhotoSize$photoCachedSize *)thumbnail;
+        if (![cachedSize.type isEqualToString:@"i"] || cachedSize.bytes.length == 0)
+            continue;
+        
+        NSString *url = OGCompatDocumentThumbUrl(concreteDocument, cachedSize);
+        if (url != nil)
+            [[TGRemoteImageView sharedCache] cacheImage:nil withData:cachedSize.bytes url:url availability:TGCacheDisk];
+        return url;
+    }
+    return nil;
+}
+
++ (TGVideoInfo *)videoInfoForTelegraphDocumentDesc:(TLDocument *)desc alternativeDocuments:(NSArray *)alternativeDocuments alternativeFileReferences:(NSDictionary **)alternativeFileReferences
+{
+    if (alternativeFileReferences != NULL)
+        *alternativeFileReferences = nil;
+    if (![desc isKindOfClass:[TLDocument$document class]])
+        return nil;
+
+    TLDocument$document *document = (TLDocument$document *)desc;
+    TGVideoInfo *videoInfo = [[TGVideoInfo alloc] init];
+    [videoInfo addVideoWithQuality:1 url:[[NSString alloc] initWithFormat:@"video:%lld:%lld:%d:%d", document.n_id, document.access_hash, document.dc_id, document.size] size:document.size codec:TGTelegraphDocumentVideoAttribute(document).video_codec];
+
+    NSMutableDictionary *references = nil;
+    for (id alternative in alternativeDocuments)
+    {
+        if (![alternative isKindOfClass:[TLDocument$document class]])
+            continue;
+        TLDocument$document *alternativeDocument = alternative;
+        if (alternativeDocument.n_id == document.n_id || alternativeDocument.size <= 0 || [[alternativeDocument.mime_type lowercaseString] rangeOfString:@"mpegurl"].location != NSNotFound)
+            continue;
+        TLDocumentAttribute$documentAttributeVideo *video = TGTelegraphDocumentVideoAttribute(alternativeDocument);
+        int32_t shortSide = video == nil ? 0 : MIN(video.w, video.h);
+        if (shortSide <= 0)
+            continue;
+        [videoInfo addVideoWithQuality:TGVideoInfoAlternativeQualityBase + shortSide url:[[NSString alloc] initWithFormat:@"video:%lld:%lld:%d:%d", alternativeDocument.n_id, alternativeDocument.access_hash, alternativeDocument.dc_id, alternativeDocument.size] size:alternativeDocument.size codec:video.video_codec];
+        if (alternativeDocument.file_reference.length != 0)
+        {
+            if (references == nil)
+                references = [[NSMutableDictionary alloc] init];
+            references[[NSString stringWithFormat:@"%lld_%lld", alternativeDocument.n_id, alternativeDocument.access_hash]] = alternativeDocument.file_reference;
+        }
+    }
+    if (alternativeFileReferences != NULL)
+        *alternativeFileReferences = references;
+    return videoInfo;
+}
+
+- (instancetype)initWithTelegraphDocumentDesc:(TLDocument *)desc
+{
+    self = [super init];
+    if (self != nil)
+    {
+        self.type = TGDocumentMediaAttachmentType;
+        
+        self.documentId = desc.n_id;
+        
+        if ([desc isKindOfClass:[TLDocument$document class]])
+        {
+            TLDocument$document *concreteDocument = (TLDocument$document *)desc;
+            
+            self.accessHash = concreteDocument.access_hash;
+            self.datacenterId = concreteDocument.dc_id;
+            self.date = concreteDocument.date;
+            self.version = concreteDocument.version;
+            
+            self.attributes = [TGDocumentMediaAttachment parseAttribtues:concreteDocument.attributes];
+            self.mimeType = concreteDocument.mime_type;
+            self.size = concreteDocument.size;
+            
+            NSUInteger audioAt = [(self.attributes ?: @[]) indexOfObjectPassingTest:^BOOL(id attribute, __unused NSUInteger idx, __unused BOOL *stop)
+            {
+                return [attribute isKindOfClass:[TGDocumentAttributeAudio class]];
+            }];
+            if (audioAt == NSNotFound && ([self.mimeType hasPrefix:@"audio/"] || [self.mimeType isEqualToString:@"application/ogg"]))
+            {
+                NSArray *voiceTypes = @[@"audio/ogg", @"audio/opus", @"application/ogg"];
+                bool voice = [voiceTypes containsObject:self.mimeType];
+                NSMutableArray *extended = [NSMutableArray arrayWithArray:self.attributes ?: @[]];
+                [extended addObject:[[TGDocumentAttributeAudio alloc] initWithIsVoice:voice title:nil performer:nil duration:0 waveform:nil]];
+                self.attributes = extended;
+            }
+            
+            NSData *cachedData = nil;
+            TGImageInfo *thumbmailInfo = nil;
+            if (concreteDocument.thumbs.count != 0 || concreteDocument.video_thumbs.count != 0)
+            {
+                thumbmailInfo = [[TGImageInfo alloc] init];
+                for (NSArray *thumbnails in @[concreteDocument.thumbs ?: @[], concreteDocument.video_thumbs ?: @[]])
+                {
+                    for (TLPhotoSize *thumbnail in thumbnails)
+                    {
+                        OGCompatThumbFacts *facts = [OGCompatThumbFacts factsForSize:thumbnail];
+                        if ([facts.type isEqualToString:@"i"] || facts.dimensions.width <= 0 || facts.dimensions.height <= 0)
+                            continue;
+                        NSString *url = OGCompatDocumentThumbUrl(concreteDocument, thumbnail);
+                        if (url.length == 0)
+                            continue;
+                        [thumbmailInfo addImageWithSize:facts.dimensions url:url fileSize:facts.fileSize];
+                        if (facts.bytes.length != 0)
+                            [[TGRemoteImageView sharedCache] cacheImage:nil withData:facts.bytes url:url availability:TGCacheDisk];
+                    }
+                    if ([thumbmailInfo imageUrlForPreviewWithSize:NULL].length != 0)
+                        break;
+                }
+            }
+            else if (concreteDocument.thumb != nil)
+            {
+                thumbmailInfo = [[TGImageInfo alloc] initWithTelegraphSizesDescription:@[concreteDocument.thumb] cachedData:&cachedData];
+                if (thumbmailInfo.empty || [thumbmailInfo imageUrlForLargestSize:NULL].length == 0)
+                {
+                    NSString *modernUrl = OGCompatDocumentThumbUrl(concreteDocument, concreteDocument.thumb);
+                    if (modernUrl != nil)
+                    {
+                        OGCompatThumbFacts *facts = [OGCompatThumbFacts factsForSize:concreteDocument.thumb];
+                        if (cachedData == nil && facts.bytes.length != 0)
+                            cachedData = facts.bytes;
+                        
+                        thumbmailInfo = [[TGImageInfo alloc] init];
+                        [thumbmailInfo addImageWithSize:facts.dimensions url:modernUrl fileSize:facts.fileSize];
+                    }
+                }
+            }
+            if (thumbmailInfo != nil && !thumbmailInfo.empty)
+            {
+                self.thumbnailInfo = thumbmailInfo;
+                if (cachedData != nil)
+                {
+                    static NSString *filesDirectory = nil;
+                    static dispatch_once_t onceToken;
+                    dispatch_once(&onceToken, ^
+                    {
+                        filesDirectory = [[TGAppDelegate documentsPath] stringByAppendingPathComponent:@"files"];
+                    });
+                    
+                    NSString *fileDirectoryName = nil;
+                    fileDirectoryName = [[NSString alloc] initWithFormat:@"%" PRIx64 "", self.documentId];
+                    NSString *fileDirectory = [filesDirectory stringByAppendingPathComponent:fileDirectoryName];
+                    
+                    [[NSFileManager defaultManager] createDirectoryAtPath:fileDirectory withIntermediateDirectories:true attributes:nil error:nil];
+                    
+                    NSString *filePath = [fileDirectory stringByAppendingPathComponent:@"thumbnail"];
+                    
+                    [cachedData writeToFile:filePath atomically:true];
+                    CGSize thumbnailSize = CGSizeZero;
+                    [self.thumbnailInfo imageUrlForLargestSize:&thumbnailSize];
+                    TGImageInfo *localThumbnailInfo = [[TGImageInfo alloc] init];
+                    [localThumbnailInfo addImageWithSize:thumbnailSize url:[@"file://" stringByAppendingString:filePath] fileSize:(int)cachedData.length];
+                    self.thumbnailInfo = localThumbnailInfo;
+                }
+            }
+        }
+    }
+    return self;
+}
+
+- (instancetype)initWithSecret23Desc:(Secret23_DecryptedMessageMedia_decryptedMessageMediaExternalDocument *)desc
+{
+    self = [super init];
+    if (self != nil)
+    {
+        self.type = TGDocumentMediaAttachmentType;
+        
+        self.documentId = [desc.pid longLongValue];
+        
+        self.accessHash = [desc.accessHash longLongValue];
+        self.datacenterId = [desc.dcId intValue];
+        self.date = [desc.date intValue];
+        
+        NSMutableArray *attributes = [[NSMutableArray alloc] init];
+        for (id attribute in desc.attributes)
+        {
+            if ([attribute isKindOfClass:[Secret23_DocumentAttribute_documentAttributeFilename class]])
+            {
+                Secret23_DocumentAttribute_documentAttributeFilename *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeFilename alloc] initWithFilename:concreteAttribute.fileName]];
+            }
+            else if ([attribute isKindOfClass:[Secret23_DocumentAttribute_documentAttributeAnimated class]])
+            {
+                [attributes addObject:[[TGDocumentAttributeAnimated alloc] init]];
+            }
+            else if ([attribute isKindOfClass:[Secret23_DocumentAttribute_documentAttributeAudio class]])
+            {
+            }
+            else if ([attribute isKindOfClass:[Secret23_DocumentAttribute_documentAttributeImageSize class]])
+            {
+                Secret23_DocumentAttribute_documentAttributeImageSize *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeImageSize alloc] initWithSize:CGSizeMake(concreteAttribute.w.integerValue, concreteAttribute.h.integerValue)]];
+            }
+            else if ([attribute isKindOfClass:[Secret23_DocumentAttribute_documentAttributeSticker class]])
+            {
+                [attributes addObject:[[TGDocumentAttributeSticker alloc] initWithAlt:nil packReference:nil mask:nil]];
+            }
+            else if ([attribute isKindOfClass:[Secret23_DocumentAttribute_documentAttributeVideo class]])
+            {
+            }
+        }
+    
+        self.attributes = attributes;
+        self.mimeType = desc.mimeType;
+        self.size = [desc.size intValue];
+        
+        NSData *cachedData = nil;
+        TGImageInfo *thumbmailInfo = desc.thumb == nil ? nil : [[TGImageInfo alloc] initWithSecret23SizesDescription:@[desc.thumb] cachedData:&cachedData];
+        if (thumbmailInfo != nil && !thumbmailInfo.empty)
+        {
+            self.thumbnailInfo = thumbmailInfo;
+            if (cachedData != nil)
+            {
+                static NSString *filesDirectory = nil;
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^
+                {
+                    filesDirectory = [[TGAppDelegate documentsPath] stringByAppendingPathComponent:@"files"];
+                });
+                
+                NSString *fileDirectoryName = nil;
+                fileDirectoryName = [[NSString alloc] initWithFormat:@"%" PRIx64 "", self.documentId];
+                NSString *fileDirectory = [filesDirectory stringByAppendingPathComponent:fileDirectoryName];
+                
+                [[NSFileManager defaultManager] createDirectoryAtPath:fileDirectory withIntermediateDirectories:true attributes:nil error:nil];
+                
+                NSString *filePath = [fileDirectory stringByAppendingPathComponent:@"thumbnail"];
+                
+                [cachedData writeToFile:filePath atomically:true];
+            }
+        }
+    }
+    return self;
+}
+
+- (instancetype)initWithSecret46ExternalDesc:(Secret46_DecryptedMessageMedia_decryptedMessageMediaExternalDocument *)desc {
+    self = [super init];
+    if (self != nil)
+    {
+        self.type = TGDocumentMediaAttachmentType;
+        
+        self.documentId = [desc.pid longLongValue];
+        
+        self.accessHash = [desc.accessHash longLongValue];
+        self.datacenterId = [desc.dcId intValue];
+        self.date = [desc.date intValue];
+        
+        NSMutableArray *attributes = [[NSMutableArray alloc] init];
+        for (id attribute in desc.attributes)
+        {
+            if ([attribute isKindOfClass:[Secret46_DocumentAttribute_documentAttributeFilename class]])
+            {
+                Secret46_DocumentAttribute_documentAttributeFilename *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeFilename alloc] initWithFilename:concreteAttribute.fileName]];
+            }
+            else if ([attribute isKindOfClass:[Secret46_DocumentAttribute_documentAttributeAnimated class]])
+            {
+                [attributes addObject:[[TGDocumentAttributeAnimated alloc] init]];
+            }
+            else if ([attribute isKindOfClass:[Secret46_DocumentAttribute_documentAttributeAudio class]])
+            {
+                Secret46_DocumentAttribute_documentAttributeAudio *concreteAttribute = attribute;
+                TGAudioWaveform *waveform = nil;
+                if (concreteAttribute.waveform.length != 0) {
+                    waveform = [[TGAudioWaveform alloc] initWithBitstream:concreteAttribute.waveform bitsPerSample:5];
+                }
+                [attributes addObject:[[TGDocumentAttributeAudio alloc] initWithIsVoice:[concreteAttribute.flags intValue] & (1 << 10) title:concreteAttribute.title performer:concreteAttribute.performer duration:[concreteAttribute.duration intValue] waveform:waveform]];
+            }
+            else if ([attribute isKindOfClass:[Secret46_DocumentAttribute_documentAttributeImageSize class]])
+            {
+                Secret46_DocumentAttribute_documentAttributeImageSize *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeImageSize alloc] initWithSize:CGSizeMake(concreteAttribute.w.integerValue, concreteAttribute.h.integerValue)]];
+            }
+            else if ([attribute isKindOfClass:[Secret46_DocumentAttribute_documentAttributeSticker class]])
+            {
+                Secret46_DocumentAttribute_documentAttributeSticker *concreteAttribute = attribute;
+                TGStickerPackShortnameReference *reference = nil;
+                if ([concreteAttribute.stickerset isKindOfClass:[Secret46_InputStickerSet_inputStickerSetShortName class]]) {
+                    Secret46_InputStickerSet_inputStickerSetShortName *concreteStickerSet = (Secret46_InputStickerSet_inputStickerSetShortName *)concreteAttribute.stickerset;
+                    reference = [[TGStickerPackShortnameReference alloc] initWithShortName:concreteStickerSet.shortName];
+                }
+                [attributes addObject:[[TGDocumentAttributeSticker alloc] initWithAlt:concreteAttribute.alt packReference:reference mask:nil]];
+            }
+            else if ([attribute isKindOfClass:[Secret46_DocumentAttribute_documentAttributeVideo class]])
+            {
+                Secret46_DocumentAttribute_documentAttributeVideo *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeVideo alloc] initWithRoundMessage:false size:CGSizeMake([concreteAttribute.w intValue], [concreteAttribute.h intValue]) duration:[concreteAttribute.duration intValue]]];
+            }
+        }
+        
+        self.attributes = attributes;
+        self.mimeType = desc.mimeType;
+        self.size = [desc.size intValue];
+        
+        NSData *cachedData = nil;
+        TGImageInfo *thumbmailInfo = desc.thumb == nil ? nil : [[TGImageInfo alloc] initWithSecret46SizesDescription:@[desc.thumb] cachedData:&cachedData];
+        if (thumbmailInfo != nil && !thumbmailInfo.empty)
+        {
+            self.thumbnailInfo = thumbmailInfo;
+            if (cachedData != nil)
+            {
+                static NSString *filesDirectory = nil;
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^
+                              {
+                                  filesDirectory = [[TGAppDelegate documentsPath] stringByAppendingPathComponent:@"files"];
+                              });
+                
+                NSString *fileDirectoryName = nil;
+                fileDirectoryName = [[NSString alloc] initWithFormat:@"%" PRIx64 "", self.documentId];
+                NSString *fileDirectory = [filesDirectory stringByAppendingPathComponent:fileDirectoryName];
+                
+                [[NSFileManager defaultManager] createDirectoryAtPath:fileDirectory withIntermediateDirectories:true attributes:nil error:nil];
+                
+                NSString *filePath = [fileDirectory stringByAppendingPathComponent:@"thumbnail"];
+                
+                [cachedData writeToFile:filePath atomically:true];
+            }
+        }
+    }
+    return self;
+}
+
+- (instancetype)initWithSecret66ExternalDesc:(Secret66_DecryptedMessageMedia_decryptedMessageMediaExternalDocument *)desc {
+    self = [super init];
+    if (self != nil)
+    {
+        self.type = TGDocumentMediaAttachmentType;
+        
+        self.documentId = [desc.pid longLongValue];
+        
+        self.accessHash = [desc.accessHash longLongValue];
+        self.datacenterId = [desc.dcId intValue];
+        self.date = [desc.date intValue];
+        
+        NSMutableArray *attributes = [[NSMutableArray alloc] init];
+        for (id attribute in desc.attributes)
+        {
+            if ([attribute isKindOfClass:[Secret66_DocumentAttribute_documentAttributeFilename class]])
+            {
+                Secret66_DocumentAttribute_documentAttributeFilename *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeFilename alloc] initWithFilename:concreteAttribute.fileName]];
+            }
+            else if ([attribute isKindOfClass:[Secret66_DocumentAttribute_documentAttributeAnimated class]])
+            {
+                [attributes addObject:[[TGDocumentAttributeAnimated alloc] init]];
+            }
+            else if ([attribute isKindOfClass:[Secret66_DocumentAttribute_documentAttributeAudio class]])
+            {
+                Secret66_DocumentAttribute_documentAttributeAudio *concreteAttribute = attribute;
+                TGAudioWaveform *waveform = nil;
+                if (concreteAttribute.waveform.length != 0) {
+                    waveform = [[TGAudioWaveform alloc] initWithBitstream:concreteAttribute.waveform bitsPerSample:5];
+                }
+                [attributes addObject:[[TGDocumentAttributeAudio alloc] initWithIsVoice:[concreteAttribute.flags intValue] & (1 << 10) title:concreteAttribute.title performer:concreteAttribute.performer duration:[concreteAttribute.duration intValue] waveform:waveform]];
+            }
+            else if ([attribute isKindOfClass:[Secret66_DocumentAttribute_documentAttributeImageSize class]])
+            {
+                Secret66_DocumentAttribute_documentAttributeImageSize *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeImageSize alloc] initWithSize:CGSizeMake(concreteAttribute.w.integerValue, concreteAttribute.h.integerValue)]];
+            }
+            else if ([attribute isKindOfClass:[Secret66_DocumentAttribute_documentAttributeSticker class]])
+            {
+                Secret66_DocumentAttribute_documentAttributeSticker *concreteAttribute = attribute;
+                TGStickerPackShortnameReference *reference = nil;
+                if ([concreteAttribute.stickerset isKindOfClass:[Secret66_InputStickerSet_inputStickerSetShortName class]]) {
+                    Secret66_InputStickerSet_inputStickerSetShortName *concreteStickerSet = (Secret66_InputStickerSet_inputStickerSetShortName *)concreteAttribute.stickerset;
+                    reference = [[TGStickerPackShortnameReference alloc] initWithShortName:concreteStickerSet.shortName];
+                }
+                [attributes addObject:[[TGDocumentAttributeSticker alloc] initWithAlt:concreteAttribute.alt packReference:reference mask:nil]];
+            }
+            else if ([attribute isKindOfClass:[Secret66_DocumentAttribute_documentAttributeVideo class]])
+            {
+                Secret66_DocumentAttribute_documentAttributeVideo *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeVideo alloc] initWithRoundMessage:concreteAttribute.flags.intValue & (1 << 0) size:CGSizeMake([concreteAttribute.w intValue], [concreteAttribute.h intValue]) duration:[concreteAttribute.duration intValue]]];
+            }
+        }
+        
+        self.attributes = attributes;
+        self.mimeType = desc.mimeType;
+        self.size = [desc.size intValue];
+        
+        NSData *cachedData = nil;
+        TGImageInfo *thumbmailInfo = desc.thumb == nil ? nil : [[TGImageInfo alloc] initWithSecret66SizesDescription:@[desc.thumb] cachedData:&cachedData];
+        if (thumbmailInfo != nil && !thumbmailInfo.empty)
+        {
+            self.thumbnailInfo = thumbmailInfo;
+            if (cachedData != nil)
+            {
+                static NSString *filesDirectory = nil;
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^
+                              {
+                                  filesDirectory = [[TGAppDelegate documentsPath] stringByAppendingPathComponent:@"files"];
+                              });
+                
+                NSString *fileDirectoryName = nil;
+                fileDirectoryName = [[NSString alloc] initWithFormat:@"%" PRIx64 "", self.documentId];
+                NSString *fileDirectory = [filesDirectory stringByAppendingPathComponent:fileDirectoryName];
+                
+                [[NSFileManager defaultManager] createDirectoryAtPath:fileDirectory withIntermediateDirectories:true attributes:nil error:nil];
+                
+                NSString *filePath = [fileDirectory stringByAppendingPathComponent:@"thumbnail"];
+                
+                [cachedData writeToFile:filePath atomically:true];
+            }
+        }
+    }
+    return self;
+}
+
+- (instancetype)initWithSecret73ExternalDesc:(Secret73_DecryptedMessageMedia_decryptedMessageMediaExternalDocument *)desc {
+    self = [super init];
+    if (self != nil)
+    {
+        self.type = TGDocumentMediaAttachmentType;
+        
+        self.documentId = [desc.pid longLongValue];
+        
+        self.accessHash = [desc.accessHash longLongValue];
+        self.datacenterId = [desc.dcId intValue];
+        self.date = [desc.date intValue];
+        
+        NSMutableArray *attributes = [[NSMutableArray alloc] init];
+        for (id attribute in desc.attributes)
+        {
+            if ([attribute isKindOfClass:[Secret73_DocumentAttribute_documentAttributeFilename class]])
+            {
+                Secret73_DocumentAttribute_documentAttributeFilename *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeFilename alloc] initWithFilename:concreteAttribute.fileName]];
+            }
+            else if ([attribute isKindOfClass:[Secret73_DocumentAttribute_documentAttributeAnimated class]])
+            {
+                [attributes addObject:[[TGDocumentAttributeAnimated alloc] init]];
+            }
+            else if ([attribute isKindOfClass:[Secret73_DocumentAttribute_documentAttributeAudio class]])
+            {
+                Secret73_DocumentAttribute_documentAttributeAudio *concreteAttribute = attribute;
+                TGAudioWaveform *waveform = nil;
+                if (concreteAttribute.waveform.length != 0) {
+                    waveform = [[TGAudioWaveform alloc] initWithBitstream:concreteAttribute.waveform bitsPerSample:5];
+                }
+                [attributes addObject:[[TGDocumentAttributeAudio alloc] initWithIsVoice:[concreteAttribute.flags intValue] & (1 << 10) title:concreteAttribute.title performer:concreteAttribute.performer duration:[concreteAttribute.duration intValue] waveform:waveform]];
+            }
+            else if ([attribute isKindOfClass:[Secret73_DocumentAttribute_documentAttributeImageSize class]])
+            {
+                Secret73_DocumentAttribute_documentAttributeImageSize *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeImageSize alloc] initWithSize:CGSizeMake(concreteAttribute.w.integerValue, concreteAttribute.h.integerValue)]];
+            }
+            else if ([attribute isKindOfClass:[Secret73_DocumentAttribute_documentAttributeSticker class]])
+            {
+                Secret73_DocumentAttribute_documentAttributeSticker *concreteAttribute = attribute;
+                TGStickerPackShortnameReference *reference = nil;
+                if ([concreteAttribute.stickerset isKindOfClass:[Secret73_InputStickerSet_inputStickerSetShortName class]]) {
+                    Secret73_InputStickerSet_inputStickerSetShortName *concreteStickerSet = (Secret73_InputStickerSet_inputStickerSetShortName *)concreteAttribute.stickerset;
+                    reference = [[TGStickerPackShortnameReference alloc] initWithShortName:concreteStickerSet.shortName];
+                }
+                [attributes addObject:[[TGDocumentAttributeSticker alloc] initWithAlt:concreteAttribute.alt packReference:reference mask:nil]];
+            }
+            else if ([attribute isKindOfClass:[Secret73_DocumentAttribute_documentAttributeVideo class]])
+            {
+                Secret73_DocumentAttribute_documentAttributeVideo *concreteAttribute = attribute;
+                [attributes addObject:[[TGDocumentAttributeVideo alloc] initWithRoundMessage:concreteAttribute.flags.intValue & (1 << 0) size:CGSizeMake([concreteAttribute.w intValue], [concreteAttribute.h intValue]) duration:[concreteAttribute.duration intValue]]];
+            }
+        }
+        
+        self.attributes = attributes;
+        self.mimeType = desc.mimeType;
+        self.size = [desc.size intValue];
+        
+        NSData *cachedData = nil;
+        TGImageInfo *thumbmailInfo = desc.thumb == nil ? nil : [[TGImageInfo alloc] initWithSecret73SizesDescription:@[desc.thumb] cachedData:&cachedData];
+        if (thumbmailInfo != nil && !thumbmailInfo.empty)
+        {
+            self.thumbnailInfo = thumbmailInfo;
+            if (cachedData != nil)
+            {
+                static NSString *filesDirectory = nil;
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^
+                              {
+                                  filesDirectory = [[TGAppDelegate documentsPath] stringByAppendingPathComponent:@"files"];
+                              });
+                
+                NSString *fileDirectoryName = nil;
+                fileDirectoryName = [[NSString alloc] initWithFormat:@"%" PRIx64 "", self.documentId];
+                NSString *fileDirectory = [filesDirectory stringByAppendingPathComponent:fileDirectoryName];
+                
+                [[NSFileManager defaultManager] createDirectoryAtPath:fileDirectory withIntermediateDirectories:true attributes:nil error:nil];
+                
+                NSString *filePath = [fileDirectory stringByAppendingPathComponent:@"thumbnail"];
+                
+                [cachedData writeToFile:filePath atomically:true];
+            }
+        }
+    }
+    return self;
+}
+
+@end

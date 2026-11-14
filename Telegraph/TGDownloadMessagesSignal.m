@@ -1,0 +1,653 @@
+#import "TGDownloadMessagesSignal.h"
+
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import "TGTelegramNetworking.h"
+#import "TL/TLMetaScheme.h"
+
+#import "TGUserDataRequestBuilder.h"
+
+#import "TGMessage+Telegraph.h"
+#import "TGAudioMediaAttachment+Telegraph.h"
+
+#import "TGStickersSignals.h"
+#import "TGRecentStickersSignal.h"
+#import "TGRecentGifsSignal.h"
+#import "TGWebpageSignals.h"
+#import "TGRecentMaskStickersSignal.h"
+#import "TGFavoriteStickersSignal.h"
+
+#import "TGFileReferenceManager.h"
+
+#import "TGTelegraph.h"
+#import "TGDatabase.h"
+
+#import "TLMetaScheme.h"
+#import "TGConversation+Telegraph.h"
+
+extern NSArray *OGInputMessageIdsFromMessageIds(NSArray *messageIds);
+
+static NSArray *OGCompatMessageIdNumbers(NSArray *downloadMessages)
+{
+    NSMutableArray *numbers = [NSMutableArray arrayWithCapacity:downloadMessages.count];
+    for (TGDownloadMessage *entry in downloadMessages)
+        [numbers addObject:@(entry.messageId)];
+    return numbers;
+}
+
+static NSDictionary *OGCompatOriginsByDocumentId(NSArray *documents)
+{
+    NSMutableDictionary *origins = [[NSMutableDictionary alloc] init];
+    for (TGDocumentMediaAttachment *document in documents)
+    {
+        if (document.originInfo != nil)
+            origins[@(document.documentId)] = document.originInfo;
+    }
+    return origins;
+}
+
+@implementation TGDownloadMessage
+
+- (instancetype)initWithPeerId:(int64_t)peerId accessHash:(int64_t)accessHash messageId:(int32_t)messageId {
+    self = [super init];
+    if (self != nil) {
+        _peerId = peerId;
+        _accessHash = accessHash;
+        _messageId = messageId;
+    }
+    return self;
+}
+
+@end
+
+static TGMediaOriginInfo *TGDownloadMessagesSelectOriginInfo(id result, int64_t identifier)
+{
+    if (![result isKindOfClass:[NSDictionary class]])
+        return nil;
+
+    NSDictionary *originInfos = result;
+    TGMediaOriginInfo *originInfo = identifier != 0 ? originInfos[@(identifier)] : nil;
+    if (originInfo == nil && originInfos.count == 1)
+        originInfo = originInfos.allValues.firstObject;
+    return originInfo;
+}
+
+@implementation TGDownloadMessagesSignal
+
++ (SSignal *)downloadMessages:(NSArray *)messages
+{
+    if (messages.count == 0) {
+        return [SSignal single:messages];
+    }
+    
+    TGTelegramNetworking *networking = [TGTelegramNetworking instance];
+    if (networking == nil) {
+        return [SSignal single:@[]];
+    }
+    
+    SSignal *channelSignal = [SSignal single:@[]];
+    SSignal *genericSignal = [SSignal single:@[]];
+    
+    NSMutableDictionary *channelMessageIdsByPeerId = [[NSMutableDictionary alloc] init];
+    NSMutableArray *genericMessageIds = [[NSMutableArray alloc] init];
+    for (TGDownloadMessage *message in messages) {
+        if (TGPeerIdIsChannel(message.peerId)) {
+            NSMutableArray *channelMessageIds = channelMessageIdsByPeerId[@(message.peerId)];
+            if (channelMessageIds == nil) {
+                channelMessageIds = [[NSMutableArray alloc] init];
+                channelMessageIdsByPeerId[@(message.peerId)] = channelMessageIds;
+            }
+            [channelMessageIds addObject:message];
+        } else {
+            [genericMessageIds addObject:@(message.messageId)];
+        }
+    }
+    
+    if (channelMessageIdsByPeerId.count != 0) {
+        NSMutableArray *signals = [[NSMutableArray alloc] init];
+        
+        [channelMessageIdsByPeerId enumerateKeysAndObjectsUsingBlock:^(__unused id key, NSArray *messages, __unused BOOL *stop) {
+            if (messages.count > 0) {
+                TGDownloadMessage *leadMessage = (TGDownloadMessage *)[messages objectAtIndex:0];
+                TLRPCchannels_getMessages$channels_getMessages *getChannelMessages = [[TLRPCchannels_getMessages$channels_getMessages alloc] init];
+                TLInputChannel$inputChannel *inputChannel = [[TLInputChannel$inputChannel alloc] init];
+                inputChannel.channel_id = TGChannelIdFromPeerId(leadMessage.peerId);
+                inputChannel.access_hash = leadMessage.accessHash;
+                getChannelMessages.channel = inputChannel;
+                
+                getChannelMessages.n_id = OGInputMessageIdsFromMessageIds(OGCompatMessageIdNumbers(messages));
+                
+                SSignal *signal = [[networking requestSignal:getChannelMessages] map:^id(TLmessages_Messages *result) {
+                    [TGUserDataRequestBuilder executeUserDataUpdate:result.users];
+                    
+                    NSMutableArray *messages = [[NSMutableArray alloc] init];
+                    id replyPreload = [TGMessage beginReplyPreloadForTelegraphMessageDescs:result.messages];
+                    for (TLMessage *desc in result.messages)
+                    {
+                        TGMessage *message = [[TGMessage alloc] initWithTelegraphMessageDesc:desc];
+                        if (message.mid != 0)
+                            [messages addObject:message];
+                    }
+                    [TGMessage endReplyPreload:replyPreload];
+                    
+                    return messages;
+                }];
+                [signals addObject:signal];
+            }
+        }];
+        
+        if ([signals count] > 0) {
+            channelSignal = [[SSignal combineSignals:signals] map:^id(NSArray *messageLists) {
+                NSMutableArray *messages = [[NSMutableArray alloc] init];
+                for (NSArray *array in messageLists) {
+                    [messages addObjectsFromArray:array];
+                }
+                return messages;
+            }];
+        }
+    }
+    
+    if (genericMessageIds.count != 0) {
+        TLRPCmessages_getMessages$messages_getMessages *getMessages = [[TLRPCmessages_getMessages$messages_getMessages alloc] init];
+        getMessages.n_id = OGInputMessageIdsFromMessageIds(genericMessageIds);
+        genericSignal = [[networking requestSignal:getMessages] map:^id(TLmessages_Messages *result) {
+            [TGUserDataRequestBuilder executeUserDataUpdate:result.users];
+            
+            NSMutableArray *messages = [[NSMutableArray alloc] init];
+            id replyPreload = [TGMessage beginReplyPreloadForTelegraphMessageDescs:result.messages];
+            for (TLMessage *desc in result.messages)
+            {
+                TGMessage *message = [[TGMessage alloc] initWithTelegraphMessageDesc:desc];
+                if (message.mid != 0)
+                    [messages addObject:message];
+            }
+            [TGMessage endReplyPreload:replyPreload];
+            
+            return messages;
+        }];
+    }
+    
+    return [[[SSignal combineSignals:@[genericSignal, channelSignal]] map:^id(NSArray *messageLists) {
+        NSMutableArray *messages = [[NSMutableArray alloc] init];
+        for (NSArray *array in messageLists) {
+            [messages addObjectsFromArray:array];
+        }
+        return messages;
+    }] catch:^SSignal *(__unused id error) {
+        return [SSignal single:@[]];
+    }];
+}
+
++ (SSignal *)mediaStickerpacks:(TGMediaAttachment *)attachment {
+    return [SSignal single:@[]];
+    
+    SSignal *request = nil;
+    if ([attachment isKindOfClass:[TGImageMediaAttachment class]]) {
+        TGImageMediaAttachment *image = (TGImageMediaAttachment *)attachment;
+        TLRPCmessages_getAttachedStickers$messages_getAttachedStickers *getAttachedStickers = [[TLRPCmessages_getAttachedStickers$messages_getAttachedStickers alloc] init];
+        TLInputStickeredMedia$inputStickeredMediaPhoto *inputStickeredPhoto = [[TLInputStickeredMedia$inputStickeredMediaPhoto alloc] init];
+        TLInputPhoto$inputPhoto *inputPhoto = [[TLInputPhoto$inputPhoto alloc] init];
+        inputPhoto.n_id = image.imageId;
+        inputPhoto.access_hash = image.accessHash;
+        inputPhoto.file_reference = image.originInfo.fileReference;
+        inputStickeredPhoto.n_id = inputPhoto;
+        getAttachedStickers.media = inputStickeredPhoto;
+        request = [[TGTelegramNetworking instance] requestSignal:getAttachedStickers];
+    } else if ([attachment isKindOfClass:[TGVideoMediaAttachment class]]) {
+        TGVideoMediaAttachment *video = (TGVideoMediaAttachment *)attachment;
+        TLRPCmessages_getAttachedStickers$messages_getAttachedStickers *getAttachedStickers = [[TLRPCmessages_getAttachedStickers$messages_getAttachedStickers alloc] init];
+        TLInputStickeredMedia$inputStickeredMediaDocument *inputStickeredDocument = [[TLInputStickeredMedia$inputStickeredMediaDocument alloc] init];
+        TLInputDocument$inputDocument *inputDocument = [[TLInputDocument$inputDocument alloc] init];
+        inputDocument.n_id = video.videoId;
+        inputDocument.access_hash = video.accessHash;
+        inputDocument.file_reference = video.originInfo.fileReference;
+        inputStickeredDocument.n_id = inputDocument;
+        getAttachedStickers.media = inputStickeredDocument;
+        request = [[TGTelegramNetworking instance] requestSignal:getAttachedStickers];
+    } else {
+        return [SSignal single:@[]];
+    }
+    
+    return [request mapToSignal:^SSignal *(NSArray *result) {
+        NSMutableArray *signals = [[NSMutableArray alloc] init];
+        for (TLStickerSetCovered *coveredSet in result) {
+            TGStickerPackIdReference *reference = [[TGStickerPackIdReference alloc] initWithPackId:coveredSet.set.n_id packAccessHash:coveredSet.set.access_hash shortName:coveredSet.set.short_name];
+            [signals addObject:[TGStickersSignals stickerPackInfo:reference]];
+        }
+        return [SSignal combineSignals:signals];
+    }];
+}
+
++ (SSignal *)loadUnseenMentionMessageId:(int64_t)peerId accessHash:(int64_t)accessHash maxId:(int32_t)maxId {
+    TLRPCmessages_getUnreadMentions$messages_getUnreadMentions *getUnreadMentions = [[TLRPCmessages_getUnreadMentions$messages_getUnreadMentions alloc] init];
+    int32_t limit = 100;
+    getUnreadMentions.peer = [TGTelegraphInstance createInputPeerForConversation:peerId accessHash:accessHash];
+    getUnreadMentions.offset_id = maxId;
+    getUnreadMentions.add_offset = -limit;
+    getUnreadMentions.limit = limit;
+    getUnreadMentions.max_id = INT32_MAX;
+    getUnreadMentions.min_id = maxId - 1;
+    
+    return [[[TGTelegramNetworking instance] requestSignal:getUnreadMentions] mapToSignal:^SSignal *(TLmessages_Messages *result) {
+        return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+            NSMutableArray *messageIds = [[NSMutableArray alloc] init];
+            NSMutableArray *messageUpdates = [[NSMutableArray alloc] init];
+            int32_t nextMessageId = maxId;
+            for (TLMessage *message in result.messages) {
+                [messageIds addObject:@(message.n_id)];
+                if (message.n_id < INT32_MAX)
+                    nextMessageId = MAX(nextMessageId, message.n_id + 1);
+            }
+            NSArray *unseenMessageIds = [TGDatabaseInstance() _addUnreadMensionMessageIds:peerId messageIds:messageIds replaceAfter:maxId <= 1 ? 1 : 0 afterFinal:(int32_t)messageIds.count < limit];
+            for (NSNumber *nMessageId in unseenMessageIds) {
+                [messageUpdates addObject:[[TGDatabaseUpdateMentionUnread alloc] initWithPeerId:peerId messageId:[nMessageId intValue]]];
+            }
+            [TGDatabaseInstance() transactionUpdateMessages:messageUpdates updateConversationDatas:nil];
+            
+            if (unseenMessageIds.count != 0)
+                return @{@"messageId": unseenMessageIds.firstObject};
+            if ((int32_t)messageIds.count >= limit)
+                return @{@"continueAfter": @(nextMessageId)};
+            return @{};
+        }] mapToSignal:^SSignal *(NSDictionary *next) {
+            NSNumber *messageId = next[@"messageId"];
+            if (messageId != nil)
+                return [SSignal single:messageId];
+            NSNumber *continueAfter = next[@"continueAfter"];
+            if (continueAfter != nil) {
+                if ([continueAfter intValue] <= maxId)
+                    return [SSignal fail:nil];
+                return [self loadUnseenMentionMessageId:peerId accessHash:accessHash maxId:[continueAfter intValue]];
+            }
+            return [SSignal single:nil];
+        }];
+    }];
+}
+
++ (SSignal *)earliestUnseenMentionMessageId:(int64_t)peerId accessHash:(int64_t)accessHash {
+    return [[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+        int32_t loadRequiredAfterMessageId = 0;
+        int32_t localId = [TGDatabaseInstance() _nextUnreadMentionMessageId:peerId loadRequiredAfterMessageId:&loadRequiredAfterMessageId];
+        
+        if (localId != 0) {
+            [TGDatabaseInstance() transactionUpdateMessages:@[[[TGDatabaseUpdateMentionUnread alloc] initWithPeerId:peerId messageId:localId]] updateConversationDatas:nil];
+            
+            return [SSignal single:@(localId)];
+        } else if (loadRequiredAfterMessageId != 0) {
+            return [self loadUnseenMentionMessageId:peerId accessHash:accessHash maxId:loadRequiredAfterMessageId];
+        } else {
+            [TGDatabaseInstance() _addUnreadMensionMessageIds:peerId messageIds:@[] replaceAfter:1 afterFinal:true];
+            return [SSignal single:nil];
+        }
+    }] switchToLatest];
+}
+
+static dispatch_block_t recursiveBlock(void (^block)(dispatch_block_t recurse))
+{
+    return ^
+    {
+        block(recursiveBlock(block));
+    };
+}
+
++ (SSignal *)clearUnseenMentions:(int64_t)peerId {
+    SSignal *clear = [[SSignal alloc] initWithGenerator:^id<SDisposable>(SSubscriber *subscriber) {
+        SMetaDisposable *disposable = [[SMetaDisposable alloc] init];
+        void (^start)() = recursiveBlock(^(dispatch_block_t recurse) {
+            TLRPCmessages_readMentions$messages_readMentions *readMentions = [[TLRPCmessages_readMentions$messages_readMentions alloc] init];
+            int64_t accessHash = 0;
+            if (TGPeerIdIsChannel(peerId)) {
+                accessHash = ((TGConversation *)[TGDatabaseInstance() loadChannels:@[@(peerId)]][@(peerId)]).accessHash;
+            }
+            readMentions.peer = [TGTelegraphInstance createInputPeerForConversation:peerId accessHash:accessHash];
+            [disposable setDisposable:[[[TGTelegramNetworking instance] requestSignal:readMentions] startWithNext:^(TLmessages_AffectedHistory *result) {
+                if (result != nil) {
+                    if (!TGPeerIdIsChannel(peerId)) {
+                        [[TGTelegramNetworking instance] updatePts:result.pts ptsCount:result.pts_count seq:0];
+                    }
+                }
+                
+                if (result.offset > 0) {
+                    recurse();
+                } else {
+                    [subscriber putCompletion];
+                }
+            } error:^(__unused id error) {
+                [subscriber putCompletion];
+            } completed:nil]];
+        });
+        
+        start();
+        
+        return [[SBlockDisposable alloc] initWithBlock:^{
+            [disposable dispose];
+        }];
+    }];
+    
+    return [clear then:[[TGDatabaseInstance() modifyDebug:__FILE__ line:__LINE__ block:^id{
+        TGUnseenPeerMentionsState *emptyMentionsState = [[TGUnseenPeerMentionsState alloc] initWithVersion:0 count:0 maxIdWithPrecalculatedCount:0];
+        [TGDatabaseInstance() transactionResetPeerUnseenMentionsStates:[NSDictionary dictionaryWithObject:emptyMentionsState forKey:@(peerId)]];
+        return [SSignal complete];
+    }] switchToLatest]];
+}
+
++ (TGFileReferenceManager *)fileReferenceManager
+{
+    static dispatch_once_t onceToken;
+    static TGFileReferenceManager *manager;
+    dispatch_once(&onceToken, ^
+    {
+        manager = [[TGFileReferenceManager alloc] init];
+    });
+    return manager;
+}
+
++ (SSignal *)updatedOriginInfo:(TGMediaOriginInfo *)origin identifier:(int64_t)identifier
+{
+    return [[[self fileReferenceManager] updatedOriginInfo:origin] mapToSignal:^SSignal *(id result)
+    {
+        TGMediaOriginInfo *refreshedInfo = TGDownloadMessagesSelectOriginInfo(result, identifier);
+        return refreshedInfo.fileReference.length != 0 ? [SSignal single:refreshedInfo] : [SSignal fail:nil];
+    }];
+}
+
++ (SSignal *)remoteOriginInfo:(TGMediaOriginInfo *)origin
+{
+    switch (origin.type) {
+        case TGMediaOriginTypeMessage:
+        {
+            SSignal *hashLookup = [SSignal defer:^SSignal *{
+                return [SSignal single:@([TGDatabaseInstance() loadConversationWithId:origin.cid.longLongValue].accessHash)];
+            }];
+            
+            return [[hashLookup mapToSignal:^SSignal *(NSNumber *resolvedHash) {
+                TGDownloadMessage *downloadMessage = [[TGDownloadMessage alloc] initWithPeerId:origin.cid.longLongValue accessHash:[resolvedHash longLongValue] messageId:origin.mid.intValue];
+                return [[self downloadMessages:@[downloadMessage]] take:1];
+            }] mapToSignal:^SSignal *(NSArray *messages)
+            {
+                TGMessage *message = messages.firstObject;
+                if (message == nil) {
+                    return [SSignal fail:nil];
+                }
+                
+                TGMediaOriginInfo *originInfo = nil;
+                int64_t identifier = 0;
+                for (TGMediaAttachment *attachment in message.mediaAttachments)
+                {
+                    if (attachment.type == TGImageMediaAttachmentType)
+                    {
+                        originInfo = ((TGImageMediaAttachment *)attachment).originInfo;
+                        identifier = ((TGImageMediaAttachment *)attachment).imageId;
+                        break;
+                    }
+                    else if (attachment.type == TGVideoMediaAttachmentType)
+                    {
+                        originInfo = ((TGVideoMediaAttachment *)attachment).originInfo;
+                        identifier = ((TGVideoMediaAttachment *)attachment).videoId;
+                        break;
+                    }
+                    else if (attachment.type == TGDocumentMediaAttachmentType)
+                    {
+                        originInfo = ((TGDocumentMediaAttachment *)attachment).originInfo;
+                        identifier = ((TGDocumentMediaAttachment *)attachment).documentId;
+                        break;
+                    }
+                    else if (attachment.type == TGAudioMediaAttachmentType)
+                    {
+                        originInfo = ((TGAudioMediaAttachment *)attachment).downloadOriginInfo;
+                        identifier = ((TGAudioMediaAttachment *)attachment).audioId;
+                        break;
+                    }
+                    else if (attachment.type == TGGameAttachmentType)
+                    {
+                        if (((TGGameMediaAttachment *)attachment).photo != nil)
+                        {
+                            originInfo = ((TGGameMediaAttachment *)attachment).photo.originInfo;
+                            identifier = ((TGGameMediaAttachment *)attachment).photo.imageId;
+                        }
+                        else if (((TGGameMediaAttachment *)attachment).document != nil)
+                        {
+                            originInfo = ((TGGameMediaAttachment *)attachment).document.originInfo;
+                            identifier = ((TGGameMediaAttachment *)attachment).document.documentId;
+                        }
+                    }
+                }
+                
+                if (originInfo.fileReference.length == 0)
+                    return [SSignal fail:nil];
+
+                return [SSignal single:@{@(identifier): originInfo}];
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeSticker:
+        {
+            NSNumber *packIdNumber = origin.stickerPackId;
+            NSNumber *packHashNumber = origin.stickerPackAccessHash;
+            if (packIdNumber == nil || packHashNumber == nil)
+                return [SSignal single:@{}];
+
+            TGStickerPackIdReference *reference = [[TGStickerPackIdReference alloc] initWithPackId:[packIdNumber longLongValue] packAccessHash:[packHashNumber longLongValue] shortName:nil];
+            return [[TGStickersSignals stickerPackInfo:reference] map:^id(TGStickerPack *pack) {
+                return OGCompatOriginsByDocumentId([pack isKindOfClass:[TGStickerPack class]] ? pack.documents : nil);
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeRecentSticker:
+        {
+            return [[TGRecentStickersSignal remoteRecentStickers] map:^id(NSDictionary *recentStickers) {
+                return OGCompatOriginsByDocumentId([recentStickers isKindOfClass:[NSDictionary class]] ? recentStickers[@"documents"] : nil);
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeFavoriteSticker:
+        {
+            return [[TGFavoriteStickersSignal remoteFavedStickers] map:^id(NSArray *favoriteStickers) {
+                NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
+                for (TGDocumentMediaAttachment *attachment in favoriteStickers)
+                {
+                    TGMediaOriginInfo *originInfo = attachment.originInfo;
+                    int64_t identifier = attachment.documentId;
+                    
+                    if (originInfo != nil)
+                        dict[@(identifier)] = originInfo;
+                }
+                return dict;
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeRecentMask:
+        {
+            return [[TGRecentMaskStickersSignal remoteRecentStickers] map:^id(NSArray *recentStickers) {
+                NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
+                for (TGDocumentMediaAttachment *attachment in recentStickers)
+                {
+                    TGMediaOriginInfo *originInfo = attachment.originInfo;
+                    int64_t identifier = attachment.documentId;
+                    
+                    if (originInfo != nil)
+                        dict[@(identifier)] = originInfo;
+                }
+                return dict;
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeRecentGif:
+        {
+            return [[TGRecentGifsSignal remoteRecentGifs] map:^id(NSArray *recentGifs) {
+                NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
+                for (TGDocumentMediaAttachment *attachment in recentGifs)
+                {
+                    TGMediaOriginInfo *originInfo = attachment.originInfo;
+                    int64_t identifier = attachment.documentId;
+                    
+                    if (originInfo != nil)
+                        dict[@(identifier)] = originInfo;
+                }
+                return dict;
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeProfilePhoto:
+        {
+            TLRPCphotos_getUserPhotos$photos_getUserPhotos *getPhotos = [[TLRPCphotos_getUserPhotos$photos_getUserPhotos alloc] init];
+            getPhotos.user_id = [TGTelegraphInstance createInputUserForUid:origin.profilePhotoUserId.longLongValue];
+            getPhotos.offset = origin.profilePhotoOffset.intValue;
+            getPhotos.limit = 1;
+            getPhotos.max_id = 0;
+            
+            return [[[TGTelegramNetworking instance] requestSignal:getPhotos] map:^id(TLphotos_Photos *result) {
+                [TGUserDataRequestBuilder executeUserDataUpdate:result.users];
+                
+                if ([result.photos.firstObject isKindOfClass:[TLPhoto$photo class]])
+                {
+                    TLPhoto$photo *photo = (TLPhoto$photo *)result.photos.firstObject;
+                    NSMutableDictionary *fileReferences = [[NSMutableDictionary alloc] init];
+                    for (TLPhotoSize$photoSize *size in photo.sizes)
+                    {
+                        if (![size respondsToSelector:@selector(location)])
+                            continue;
+                        
+                        TLFileLocation *location = [size performSelector:@selector(location)];
+                        if ([location isKindOfClass:[TLFileLocation$fileLocation class]])
+                        {
+                            TLFileLocation$fileLocation *fileLocation = (TLFileLocation$fileLocation *)location;
+                            fileReferences[[NSString stringWithFormat:@"%lld_%d", fileLocation.volume_id, fileLocation.local_id]] = fileLocation.file_reference;
+                        }
+                    }
+                    TGMediaOriginInfo *originInfo = [TGMediaOriginInfo mediaOriginInfoWithFileReference:nil fileReferences:fileReferences userId:origin.profilePhotoUserId.longLongValue offset:origin.profilePhotoOffset.intValue];
+                    return @{ @0: originInfo};
+                }
+                return nil;
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeChatPhoto:
+        {
+            int64_t peerId = origin.chatPhotoPeerId.longLongValue;
+            
+            SSignal *getChatsSignal = nil;
+            if (TGPeerIdIsChannel(peerId)) {
+                TGConversation *conversation = [TGDatabaseInstance() loadConversationWithId:peerId];
+                if (conversation.accessHash == 0)
+                    return [SSignal fail:nil];
+                
+                TLInputPeer *peer = [TGTelegraphInstance createInputPeerForConversation:peerId accessHash:conversation.accessHash];
+                if (peer == nil)
+                    return [SSignal fail:nil];
+                
+                TLRPCchannels_getChannels$channels_getChannels *getChannels = [[TLRPCchannels_getChannels$channels_getChannels alloc] init];
+                getChannels.n_id = @[peer];
+                getChatsSignal = [[TGTelegramNetworking instance] requestSignal:getChannels];
+            } else {
+                TLRPCmessages_getChats$messages_getChats *getChats = [[TLRPCmessages_getChats$messages_getChats alloc] init];
+                getChats.n_id = @[ @(TGGroupIdFromPeerId(peerId)) ];
+                getChatsSignal = [[TGTelegramNetworking instance] requestSignal:getChats];
+            }
+            
+            return [getChatsSignal map:^id(TLmessages_Chats *result) {
+                TGConversation *conversation = [[TGConversation alloc] initWithTelegraphChatDesc:result.chats.firstObject];
+                if (conversation == nil)
+                    return nil;
+                
+                NSMutableDictionary *fileReferences = [[NSMutableDictionary alloc] init];
+                if (conversation.chatPhotoSmall.length > 0 && conversation.chatPhotoFileReferenceSmall != nil)
+                {
+                    int64_t volumeId = 0;
+                    int32_t localId = 0;
+                    if (extractFileUrlComponents(conversation.chatPhotoSmall, NULL, &volumeId, &localId, NULL)) {
+                        fileReferences[[NSString stringWithFormat:@"%lld_%d", volumeId, localId]] = conversation.chatPhotoFileReferenceSmall;
+                    }
+                }
+                else
+                {
+                    return nil;
+                }
+                
+                if (conversation.chatPhotoBig.length > 0 && conversation.chatPhotoFileReferenceBig)
+                {
+                    int64_t volumeId = 0;
+                    int32_t localId = 0;
+                    if (extractFileUrlComponents(conversation.chatPhotoBig, NULL, &volumeId, &localId, NULL)) {
+                        fileReferences[[NSString stringWithFormat:@"%lld_%d", volumeId, localId]] = conversation.chatPhotoFileReferenceBig;
+                    }
+                }
+                else
+                {
+                    return nil;
+                }
+                
+                TGMediaOriginInfo *originInfo = [TGMediaOriginInfo mediaOriginInfoWithFileReference:nil fileReferences:fileReferences peerId:peerId];
+                return @{ @0: originInfo};
+            }];
+        }
+            break;
+            
+        case TGMediaOriginTypeWallpaper:
+            return [SSignal single:origin];
+            break;
+            
+        case TGMediaOriginTypeWebpage:
+            return [[TGWebpageSignals updatedWebpageForUrl:origin.webpageUrl] map:^id(TGWebPageMediaAttachment *webpage) {
+                NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
+                if (webpage.photo != nil)
+                {
+                    TGMediaOriginInfo *originInfo = webpage.photo.originInfo;
+                    int64_t identifier = webpage.photo.imageId;
+                    
+                    if (originInfo != nil)
+                        dict[@(identifier)] = originInfo;
+                }
+                if (webpage.document != nil)
+                {
+                    TGMediaOriginInfo *originInfo = webpage.document.originInfo;
+                    int64_t identifier = webpage.document.documentId;
+                    
+                    if (originInfo != nil)
+                        dict[@(identifier)] = originInfo;
+                }
+                if (webpage.instantPage != nil)
+                {
+                    for (TGImageMediaAttachment *image in webpage.instantPage.images.allValues)
+                    {
+                        TGMediaOriginInfo *originInfo = image.originInfo;
+                        int64_t identifier = image.imageId;
+                        
+                        if (originInfo != nil)
+                            dict[@(identifier)] = originInfo;
+                    }
+                    for (TGVideoMediaAttachment *video in webpage.instantPage.videos.allValues)
+                    {
+                        TGMediaOriginInfo *originInfo = video.originInfo;
+                        int64_t identifier = video.videoId;
+                        
+                        if (originInfo != nil)
+                            dict[@(identifier)] = originInfo;
+                    }
+                    for (TGDocumentMediaAttachment *document in webpage.instantPage.documents.allValues)
+                    {
+                        TGMediaOriginInfo *originInfo = document.originInfo;
+                        int64_t identifier = document.documentId;
+                        
+                        if (originInfo != nil)
+                            dict[@(identifier)] = originInfo;
+                    }
+                }
+                return dict;
+            }];
+            break;
+            
+        default:
+            return [SSignal fail:nil];
+    }
+}
+
+@end

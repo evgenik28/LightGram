@@ -1,0 +1,150 @@
+/*
+ * This is the source code of Telegram for iOS v. 1.1
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Peter Iakovlev, 2013.
+ */
+
+#import "TGAccountInfoCollectionItem.h"
+
+#import "TGUserInfoCollectionItemView.h"
+#import "TGPresentation.h"
+
+@interface TGAccountInfoCollectionItem ()
+{
+    int _synchronizationStatus;
+    NSString *_status;
+    bool _active;
+    
+    NSString *_phoneNumber;
+    NSString *_username;
+}
+
+@end
+
+@implementation TGAccountInfoCollectionItem
+
+- (instancetype)init
+{
+    self = [super init];
+    if (self != nil)
+    {
+        self.automaticallyManageUserPresence = false;
+        self.useRealName = true;
+        self.modernSubtitleShowsContactDetails = true;
+        
+        if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad)
+        {
+            self.additinalHeight = 5.0f;
+            self.avatarOffset = CGSizeMake(2.0f, 2.0f + (([UIScreen mainScreen].scale > 1.0f + FLT_EPSILON) ? 0.5f : 0.0f));
+            self.nameOffset = CGSizeMake(2.0f, 1.0f);
+        }
+    }
+    return self;
+}
+
+- (void)itemSelected:(id)actionTarget
+{
+    if (_action != NULL && [actionTarget respondsToSelector:_action])
+    {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [actionTarget performSelector:_action];
+#pragma clang diagnostic pop
+    }
+}
+
+- (void)bindView:(TGUserInfoCollectionItemView *)view
+{
+    [super bindView:view];
+    
+    NSString *status = _status;
+    bool active = _active;
+    if (false && status.length == 0)
+    {
+        status = TGLocalized(@"Presence.online");
+        active = false;
+    }
+    [view setStatus:status active:active];
+    [view setShowDisclosureIndicator:self.hasDisclosureIndicator];
+    [view setPhoneNumber:_phoneNumber];
+    [view setUsername:_username];
+    [view setShowCameraIcon:_showCameraIcon];
+    
+    
+}
+
+- (void)setHasDisclosureIndicator:(bool)flag
+{
+    _hasDisclosureIndicator = flag;
+    [(TGUserInfoCollectionItemView *)self.boundView setShowDisclosureIndicator:flag];
+}
+
+- (void)setShowCameraIcon:(bool)flag
+{
+    _showCameraIcon = flag;
+    [(TGUserInfoCollectionItemView *)self.boundView setShowCameraIcon:flag];
+}
+
+- (void)setPhoneNumber:(NSString *)phoneNumber
+{
+    _phoneNumber = phoneNumber;
+    [((TGUserInfoCollectionItemView *)self.view) setPhoneNumber:phoneNumber];
+}
+
+- (void)setUsername:(NSString *)username
+{
+    _username = username;
+    [((TGUserInfoCollectionItemView *)self.view) setUsername:username];
+}
+
+- (void)setStatus:(NSString *)status active:(bool)active
+{
+    _status = status;
+    _active = active;
+    [((TGUserInfoCollectionItemView *)self.view) setStatus:status active:active];
+}
+
+- (void)localizationUpdated
+{
+}
+
+- (bool)itemWantsMenu
+{
+    return true;
+}
+
+- (bool)itemCanPerformAction:(SEL)action
+{
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 32000
+    return action == @selector(copyPhoneNumber:) || (_username.length > 0 && action == @selector(copyUsername:));
+#else
+    return action == @selector(copy:);
+#endif
+}
+
+- (void)itemPerformAction:(SEL)action
+{
+    if (action == @selector(copyPhoneNumber:))
+    {
+        
+    }
+    else if (action == @selector(copyUsername:))
+    {
+        
+    }
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 32000
+    else if (action == @selector(copy:))
+    {
+        NSMutableArray *values = [[NSMutableArray alloc] init];
+        if (_phoneNumber.length != 0)
+            [values addObject:_phoneNumber];
+        if (_username.length != 0)
+            [values addObject:_username];
+        [[UIPasteboard generalPasteboard] setString:[values componentsJoinedByString:@"\n"]];
+    }
+#endif
+}
+
+@end

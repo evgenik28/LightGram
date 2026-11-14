@@ -1,0 +1,1189 @@
+#import "TGDialogListCellEditingControls.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import "TGDialogListCellEditingButton.h"
+
+#import "TGPresentation.h"
+#import "TGCommunityAppearance.h"
+
+static UIFont *buttonFont;
+static CGFloat leftButtonWidth;
+static CGFloat rightButtonWidth;
+
+static CGFloat TGDialogListEditingLeftButtonWidth(void)
+{
+    return false ? 65.0f : leftButtonWidth;
+}
+
+static CGFloat TGDialogListEditingRightButtonWidth(void)
+{
+    return false ? 65.0f : rightButtonWidth;
+}
+
+
+static CGFloat TGDialogListEditingRightRevealWidth(NSUInteger count, CGFloat boundsWidth)
+{
+    CGFloat contentWidth = count * TGDialogListEditingRightButtonWidth();
+    if (!false)
+        return contentWidth;
+    return MIN(contentWidth, MAX(0.0f, boundsWidth - 74.0f));
+}
+
+static UIPanGestureRecognizer *TGDialogListScrollViewPanGestureRecognizer(UIScrollView *scrollView)
+{
+    for (UIGestureRecognizer *gestureRecognizer in scrollView.gestureRecognizers)
+    {
+        if ([gestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]])
+            return (UIPanGestureRecognizer *)gestureRecognizer;
+    }
+    return nil;
+}
+
+static NSString *buttonTitleForType(TGDialogListCellEditingControlButton button) {
+    if (false)
+    {
+        switch (button)
+        {
+            case TGDialogListCellEditingControlsDelete:
+                return @"Delete";
+            case TGDialogListCellEditingControlsPin:
+                return @"Pin";
+            case TGDialogListCellEditingControlsUnpin:
+                return @"Unpin";
+            case TGDialogListCellEditingControlsMute:
+                return @"Mute";
+            case TGDialogListCellEditingControlsUnmute:
+                return @"Unmute";
+            case TGDialogListCellEditingControlsRead:
+                return @"Read";
+            case TGDialogListCellEditingControlsUnread:
+                return @"Unread";
+            case TGDialogListCellEditingControlsArchive:
+                return @"Archive";
+            case TGDialogListCellEditingControlsUnarchive:
+                return @"Chats";
+            case TGDialogListCellEditingControlsCommunity:
+                return @"Community";
+            default:
+                break;
+        }
+    }
+    switch (button) {
+        case TGDialogListCellEditingControlsDelete:
+            return TGLocalized(@"Common.Delete");
+        case TGDialogListCellEditingControlsPin:
+            return TGLocalized(@"DialogList.Pin");
+        case TGDialogListCellEditingControlsUnpin:
+            return TGLocalized(@"DialogList.Unpin");
+        case TGDialogListCellEditingControlsMute:
+            return TGLocalized(@"Conversation.Mute");
+        case TGDialogListCellEditingControlsUnmute:
+            return TGLocalized(@"Conversation.Unmute");
+        case TGDialogListCellEditingControlsPromote:
+            return TGLocalized(@"GroupInfo.ActionPromote");
+        case TGDialogListCellEditingControlsBan:
+            return TGLocalized(@"GroupInfo.ActionBan");
+        case TGDialogListCellEditingControlsRestrict:
+            return TGLocalized(@"GroupInfo.ActionRestrict");
+        case TGDialogListCellEditingControlsGroup:
+            return TGLocalized(@"DialogList.Group");
+        case TGDialogListCellEditingControlsUngroup:
+            return TGLocalized(@"DialogList.Ungroup");
+        case TGDialogListCellEditingControlsRead:
+            return TGLocalized(@"DialogList.Read");
+        case TGDialogListCellEditingControlsUnread:
+            return TGLocalized(@"DialogList.Unread");
+        case TGDialogListCellEditingControlsArchive:
+            return @"Archive";
+        case TGDialogListCellEditingControlsUnarchive:
+            return @"Chats";
+        case TGDialogListCellEditingControlsCommunity:
+            return TGLocalized(@"DialogList.Community");
+    }
+}
+
+static NSString *animationForType(TGDialogListCellEditingControlButton button) {
+    switch (button) {
+        case TGDialogListCellEditingControlsDelete:
+            return @"anim_delete";
+        case TGDialogListCellEditingControlsPin:
+            return @"anim_pin";
+        case TGDialogListCellEditingControlsUnpin:
+            return @"anim_unpin";
+        case TGDialogListCellEditingControlsMute:
+            return @"anim_mute";
+        case TGDialogListCellEditingControlsUnmute:
+            return @"anim_unmute";
+        case TGDialogListCellEditingControlsPromote:
+            return nil;
+        case TGDialogListCellEditingControlsBan:
+            return nil;
+        case TGDialogListCellEditingControlsRestrict:
+            return nil;
+        case TGDialogListCellEditingControlsGroup:
+            return @"anim_group";
+        case TGDialogListCellEditingControlsUngroup:
+            return @"anim_ungroup";
+        case TGDialogListCellEditingControlsRead:
+            return @"anim_read";
+        case TGDialogListCellEditingControlsUnread:
+            return @"anim_unread";
+        case TGDialogListCellEditingControlsArchive:
+        case TGDialogListCellEditingControlsUnarchive:
+        case TGDialogListCellEditingControlsCommunity:
+            return nil;
+    }
+}
+
+static UIColor *buttonColorForType(TGDialogListCellEditingControlButton button, TGPresentation *presentation) {
+    switch (button) {
+        case TGDialogListCellEditingControlsDelete:
+            return presentation.pallete.dialogEditDeleteColor;
+        case TGDialogListCellEditingControlsPin:
+        case TGDialogListCellEditingControlsUnpin:
+            return presentation.pallete.dialogEditPinColor;
+        case TGDialogListCellEditingControlsMute:
+        case TGDialogListCellEditingControlsUnmute:
+            return presentation.pallete.dialogEditMuteColor;
+        case TGDialogListCellEditingControlsPromote:
+            return presentation.pallete.dialogEditPinColor;
+        case TGDialogListCellEditingControlsBan:
+            return presentation.pallete.dialogEditDeleteColor;
+        case TGDialogListCellEditingControlsRestrict:
+            return presentation.pallete.dialogEditMuteColor;
+        case TGDialogListCellEditingControlsGroup:
+        case TGDialogListCellEditingControlsUngroup:
+            return presentation.pallete.dialogEditGroupColor;
+        case TGDialogListCellEditingControlsRead:
+            return presentation.pallete.dialogEditReadColor;
+        case TGDialogListCellEditingControlsUnread:
+            return presentation.pallete.dialogEditUnreadColor;
+        case TGDialogListCellEditingControlsArchive:
+        case TGDialogListCellEditingControlsUnarchive:
+            return presentation.pallete.dialogEditGroupColor;
+        case TGDialogListCellEditingControlsCommunity:
+            return [TGCommunityAppearance swipeButtonColorWithWidth:TGDialogListEditingLeftButtonWidth() presentation:presentation];
+    }
+}
+
+
+static UIImage *TGDialogListEditingBrandedIcon(NSString *name)
+{
+    UIImage *source = [TGPresentation brandedIOS6ResourceImage:name];
+    if (source == nil)
+        return nil;
+
+    CGSize size = source.size;
+    UIGraphicsBeginImageContextWithOptions(size, false, source.scale);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGRect rect = CGRectMake(0.0f, 0.0f, size.width, size.height);
+
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGFloat components[] = {
+        1.0f, 1.0f, 1.0f, 1.0f,
+        0.639f, 0.639f, 0.639f, 1.0f
+    };
+    CGFloat locations[] = {0.0f, 1.0f};
+    CGGradientRef gradient = CGGradientCreateWithColorComponents(colorSpace, components, locations, 2);
+    CGContextDrawLinearGradient(context, gradient, CGPointMake(0.0f, 0.0f), CGPointMake(0.0f, size.height), 0);
+    CGGradientRelease(gradient);
+    CGColorSpaceRelease(colorSpace);
+    [source drawInRect:rect blendMode:kCGBlendModeDestinationIn alpha:1.0f];
+
+    UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return result;
+}
+
+static UIImage *TGDialogListEditingMessageIcon(TGDialogListCellEditingControlButton button, UIColor *color)
+{
+    static NSMutableDictionary *cache;
+    if (cache == nil)
+        cache = [[NSMutableDictionary alloc] init];
+    NSString *key = [NSString stringWithFormat:@"%d:%@", (int)button, color];
+    UIImage *image = cache[key];
+    if (image != nil)
+        return image;
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(28.0f, 28.0f), false, 0.0f);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGContextSetStrokeColorWithColor(context, color.CGColor);
+    CGContextSetFillColorWithColor(context, color.CGColor);
+    CGContextSetLineWidth(context, 2.0f);
+    CGContextSetLineJoin(context, kCGLineJoinRound);
+    CGContextSetLineCap(context, kCGLineCapRound);
+    if (button == TGDialogListCellEditingControlsArchive || button == TGDialogListCellEditingControlsUnarchive) {
+        CGContextStrokeRect(context, CGRectMake(3.0f, 7.0f, 22.0f, 17.0f));
+        CGContextStrokeRect(context, CGRectMake(2.0f, 3.0f, 24.0f, 4.0f));
+        CGContextMoveToPoint(context, 14.0f, 11.0f);
+        CGContextAddLineToPoint(context, 14.0f, 20.0f);
+        CGFloat tip = button == TGDialogListCellEditingControlsArchive ? 20.0f : 11.0f;
+        CGFloat wing = button == TGDialogListCellEditingControlsArchive ? 16.0f : 15.0f;
+        CGContextMoveToPoint(context, 10.0f, wing);
+        CGContextAddLineToPoint(context, 14.0f, tip);
+        CGContextAddLineToPoint(context, 18.0f, wing);
+        CGContextStrokePath(context);
+    } else if (button == TGDialogListCellEditingControlsRead) {
+        CGContextMoveToPoint(context, 2.0f, 14.0f);
+        CGContextAddLineToPoint(context, 8.0f, 20.0f);
+        CGContextAddLineToPoint(context, 19.0f, 8.0f);
+        CGContextMoveToPoint(context, 13.0f, 18.0f);
+        CGContextAddLineToPoint(context, 15.0f, 20.0f);
+        CGContextAddLineToPoint(context, 26.0f, 8.0f);
+        CGContextStrokePath(context);
+    } else {
+        CGContextStrokeRect(context, CGRectMake(3.0f, 7.0f, 22.0f, 16.0f));
+        CGContextMoveToPoint(context, 3.0f, 7.0f);
+        CGContextAddLineToPoint(context, 14.0f, 16.0f);
+        CGContextAddLineToPoint(context, 25.0f, 7.0f);
+        CGContextStrokePath(context);
+        CGContextFillEllipseInRect(context, CGRectMake(20.0f, 2.0f, 7.0f, 7.0f));
+    }
+    image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    if (image != nil)
+        cache[key] = image;
+    return image;
+}
+
+static UIImage *buttonImageForType(TGDialogListCellEditingControlButton button, TGPresentation *presentation) {
+    if (false)
+    {
+        switch (button)
+        {
+            case TGDialogListCellEditingControlsDelete:
+                return TGDialogListEditingBrandedIcon(@"trash-fill");
+            case TGDialogListCellEditingControlsPin:
+            case TGDialogListCellEditingControlsUnpin:
+                return TGDialogListEditingBrandedIcon(@"pin-angle-fill-18");
+            case TGDialogListCellEditingControlsMute:
+            case TGDialogListCellEditingControlsUnmute:
+                return TGDialogListEditingBrandedIcon(@"volume-up-fill");
+            case TGDialogListCellEditingControlsRead:
+                return TGDialogListEditingBrandedIcon(@"read-fill");
+            case TGDialogListCellEditingControlsUnread:
+                return TGDialogListEditingMessageIcon(button, [UIColor whiteColor]);
+            case TGDialogListCellEditingControlsGroup:
+            case TGDialogListCellEditingControlsUngroup:
+                return TGDialogListEditingBrandedIcon(@"folder-fill");
+            case TGDialogListCellEditingControlsArchive:
+            case TGDialogListCellEditingControlsUnarchive:
+                return TGDialogListEditingBrandedIcon(@"inboxes-fill");
+            case TGDialogListCellEditingControlsCommunity:
+                return TGDialogListEditingBrandedIcon(@"folder-fill");
+            default:
+                return nil;
+        }
+    }
+    switch (button) {
+        case TGDialogListCellEditingControlsDelete:
+            return presentation.images.dialogEditDeleteIcon;
+        case TGDialogListCellEditingControlsPin:
+            return presentation.images.dialogEditPinIcon;
+        case TGDialogListCellEditingControlsUnpin:
+            return presentation.images.dialogEditUnpinIcon;
+        case TGDialogListCellEditingControlsMute:
+            return presentation.images.dialogEditMuteIcon;
+        case TGDialogListCellEditingControlsUnmute:
+            return presentation.images.dialogEditUnmuteIcon;
+        case TGDialogListCellEditingControlsGroup:
+            return presentation.images.dialogEditGroupIcon;
+        case TGDialogListCellEditingControlsUngroup:
+            return presentation.images.dialogEditUngroupIcon;
+        case TGDialogListCellEditingControlsCommunity:
+            return presentation.images.dialogEditCommunityIcon;
+        case TGDialogListCellEditingControlsRead:
+        case TGDialogListCellEditingControlsUnread:
+        case TGDialogListCellEditingControlsArchive:
+        case TGDialogListCellEditingControlsUnarchive:
+            return TGDialogListEditingMessageIcon(button, presentation.pallete.dialogEditTextColor);
+        default:
+            return nil;
+    }
+}
+
+@interface TGDialogListCellEditingControls (SwipeGestures)
+
+- (BOOL)shouldBeginSwipe:(UIPanGestureRecognizer *)recognizer;
+
+@end
+
+@interface TGDialogListCellEditingControlsScroller : UIScrollView
+
+@end
+
+static CGPoint validatedPoint(CGPoint value) {
+    if (isnan(value.x)) {
+        value.x = 0.0f;
+    }
+    if (isnan(value.y)) {
+        value.y = 0.0f;
+    }
+    return value;
+}
+
+static CGRect validatedRect(CGRect value) {
+    value.origin = validatedPoint(value.origin);
+    return value;
+}
+
+@implementation TGDialogListCellEditingControlsScroller
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if ([gestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]] && [self.delegate isKindOfClass:[TGDialogListCellEditingControls class]])
+        return [(TGDialogListCellEditingControls *)self.delegate shouldBeginSwipe:(UIPanGestureRecognizer *)gestureRecognizer];
+    return YES;
+}
+
+- (void)setContentOffset:(CGPoint)contentOffset {
+    [super setContentOffset:validatedPoint(contentOffset)];
+}
+
+- (void)setContentOffset:(CGPoint)contentOffset animated:(BOOL)animated {
+    [super setContentOffset:validatedPoint(contentOffset) animated:animated];
+}
+
+- (void)setBounds:(CGRect)bounds {
+    [super setBounds:validatedRect(bounds)];
+}
+
+@end
+
+@interface TGDialogListCellEditingControls () <UIScrollViewDelegate, UIGestureRecognizerDelegate> {
+    TGDialogListCellEditingControlsScroller *_scroller;
+    UIPanGestureRecognizer *_scrollerPanGestureRecognizer;
+    UITapGestureRecognizer *_manualScrollerTapGestureRecognizer;
+    bool _manualScrollerPan;
+    CGPoint _manualScrollerPanStartOffset;
+    NSArray *_leftButtonTypes;
+    NSArray *_rightButtonTypes;
+    NSMutableArray *_leftButtonViews;
+    NSMutableArray *_rightButtonViews;
+    bool _labelOnly;
+    bool _smallLabels;
+    bool _offsetLabels;
+    bool _isExpanded;
+    bool _buttonsDirty;
+    
+    bool _animatingCollapse;
+    bool _ignoringScroll;
+
+    bool _leftReadyToPlay;
+    bool _rightReadyToPlay;
+    
+    bool _scheduledReset;
+    bool _swipeGesturesEnabled;
+    bool _communitySwipeEnabled;
+    bool _expandable;
+    
+    UIImpactFeedbackGenerator *_feedbackGenerator;
+}
+
+@end
+
+@implementation TGDialogListCellEditingControls
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self != nil) {
+        _scroller = [[TGDialogListCellEditingControlsScroller alloc] init];
+        _scroller.exclusiveTouch = true;
+        if (iosMajorVersion() >= 11)
+            _scroller.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+        _scroller.directionalLockEnabled = true;
+        _scroller.showsHorizontalScrollIndicator = false;
+        _scroller.showsVerticalScrollIndicator = false;
+        _scroller.pagingEnabled = true;
+        _scroller.delegate = self;
+        _scroller.canCancelContentTouches = false;
+        _scroller.delaysContentTouches = false;
+        _scroller.scrollsToTop = false;
+        if (iosMajorVersion() >= 5)
+            [_scroller addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(scrollerTapGesture:)]];
+        [self addSubview:_scroller];
+        
+        _leftButtonViews = [[NSMutableArray alloc] init];
+        _rightButtonViews = [[NSMutableArray alloc] init];
+        
+        _leftReadyToPlay = true;
+        _rightReadyToPlay = true;
+        _swipeGesturesEnabled = true;
+        _expandable = true;
+        
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            NSArray *leftStrings = @[
+                TGLocalized(@"DialogList.Read"),
+                TGLocalized(@"DialogList.Unread"),
+                TGLocalized(@"DialogList.Community"),
+            ];
+            NSArray *rightStrings = @[
+                TGLocalized(@"Common.Delete"),
+                TGLocalized(@"DialogList.Pin"),
+                TGLocalized(@"DialogList.Unpin"),
+                TGLocalized(@"Conversation.Mute"),
+                TGLocalized(@"Conversation.Unmute"),
+                @"Archive",
+                @"Chats"
+            ];
+            buttonFont = TGSystemFontOfSize(14.0f);
+            CGFloat buttonInset = 10.0f;
+            
+            CGFloat maxButtonWidth = 0.0f;
+            for (NSString *string in leftStrings) {
+                CGSize textSize = [string sizeWithFont:buttonFont];
+                if (maxButtonWidth < textSize.width) {
+                    maxButtonWidth = textSize.width;
+                }
+            }
+            leftButtonWidth = MAX(80.0f, maxButtonWidth + buttonInset);
+            
+            maxButtonWidth = 0.0f;
+            for (NSString *string in rightStrings) {
+                CGSize textSize = [string sizeWithFont:buttonFont];
+                if (maxButtonWidth < textSize.width) {
+                    maxButtonWidth = textSize.width;
+                }
+            }
+            rightButtonWidth = MAX(74.0f, maxButtonWidth + buttonInset);
+        });
+        
+        if (iosMajorVersion() < 5)
+        {
+            _manualScrollerPan = true;
+            _scroller.scrollEnabled = false;
+            _scrollerPanGestureRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(scrollerPanGesture:)];
+            _scrollerPanGestureRecognizer.delegate = self;
+            _scrollerPanGestureRecognizer.cancelsTouchesInView = false;
+            [self addGestureRecognizer:_scrollerPanGestureRecognizer];
+
+            _manualScrollerTapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(scrollerTapGesture:)];
+            _manualScrollerTapGestureRecognizer.cancelsTouchesInView = false;
+            [self addGestureRecognizer:_manualScrollerTapGestureRecognizer];
+        }
+        else
+        {
+            _scrollerPanGestureRecognizer = TGDialogListScrollViewPanGestureRecognizer(_scroller);
+            if (_scrollerPanGestureRecognizer == nil)
+            {
+                _scrollerPanGestureRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(scrollerPanGesture:)];
+                _manualScrollerPan = true;
+                _scrollerPanGestureRecognizer.delegate = self;
+                _scrollerPanGestureRecognizer.cancelsTouchesInView = false;
+            }
+            else
+                [_scrollerPanGestureRecognizer addTarget:self action:@selector(scrollerPanStateChanged:)];
+            [self addGestureRecognizer:_scrollerPanGestureRecognizer];
+        }
+        
+        if (iosMajorVersion() >= 10)
+            _feedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    }
+    return self;
+}
+
+- (void)setLeftButtonTypes:(NSArray *)leftButtonTypes rightButtonTypes:(NSArray *)rightButtonTypes {
+    if (!TGObjectCompare(_leftButtonTypes, leftButtonTypes) || !TGObjectCompare(_rightButtonTypes, rightButtonTypes)) {
+        _leftButtonTypes = leftButtonTypes;
+        _rightButtonTypes = rightButtonTypes;
+        
+        if (!_animatingCollapse)
+            [self resetButtons];
+        else
+            _scheduledReset = true;
+        [self updateSwipeGestures];
+    }
+}
+
+- (void)setExpanded:(bool)expanded animated:(bool)animated {
+    [self setExpanded:expanded toLeft:false animated:animated];
+}
+
+- (void)setExpanded:(bool)expanded toLeft:(bool)toLeft animated:(bool)animated {
+    CGPoint offset = CGPointZero;
+    if (expanded) {
+        if (toLeft)
+            offset = CGPointMake(-TGDialogListEditingLeftButtonWidth() * _leftButtonTypes.count, 0.0f);
+        else if (_swipeGesturesEnabled)
+            offset = CGPointMake(TGDialogListEditingRightRevealWidth(_rightButtonTypes.count, self.bounds.size.width), 0.0f);
+        expanded = ABS(offset.x) > FLT_EPSILON;
+    }
+    if (expanded && _buttonsDirty)
+        [self configureButtons];
+    if (animated) {
+        if ([_scroller isDragging]) {
+            [_scroller removeFromSuperview];
+            [self insertSubview:_scroller atIndex:0];
+        }
+        if (!expanded)
+            _animatingCollapse = true;
+        
+        [UIView animateWithDuration:0.3 animations:^{
+            [_scroller setContentOffset:offset animated:false];
+            [self updateButtonFrames];
+        } completion:^(__unused BOOL finished) {
+            [self updateButtonFrames:true];
+            if (!expanded) {
+                for (TGDialogListCellEditingButton *button in _leftButtonViews) {
+                    if (button.hidden)
+                        continue;
+                    
+                    [button resetAnimation];
+                }
+                for (TGDialogListCellEditingButton *button in _rightButtonViews.reverseObjectEnumerator) {
+                    if (button.hidden)
+                        continue;
+                    
+                    [button resetAnimation];
+                }
+                
+                _animatingCollapse = false;
+                if (_scheduledReset)
+                {
+                    _scheduledReset = false;
+                    [self resetButtons];
+                }
+            }
+        }];
+    } else {
+        if (expanded) {
+            for (TGDialogListCellEditingButton *button in toLeft ? _leftButtonViews : _rightButtonViews) {
+                if (button.hidden)
+                    continue;
+                
+                [button skipAnimation];
+            }
+            
+            _leftReadyToPlay = false;
+            _rightReadyToPlay = false;
+        }
+        
+        if ([_scroller isDecelerating] || [_scroller isDragging]) {
+            [_scroller removeFromSuperview];
+            [self insertSubview:_scroller atIndex:0];
+        }
+        [_scroller setContentOffset:offset animated:false];
+        [self updateButtonFrames:true];
+        if (!expanded) {
+            for (TGDialogListCellEditingButton *button in _leftButtonViews) {
+                if (button.hidden)
+                    continue;
+                
+                [button resetAnimation];
+            }
+            for (TGDialogListCellEditingButton *button in _rightButtonViews.reverseObjectEnumerator) {
+                if (button.hidden)
+                    continue;
+                
+                [button resetAnimation];
+            }
+        }
+    }
+    if (_isExpanded != expanded) {
+        _isExpanded = expanded;
+        if (_expandedUpdated) {
+            _expandedUpdated(expanded);
+        }
+    }
+}
+
+- (bool)isExpanded {
+    return _scroller.contentOffset.x > FLT_EPSILON || _scroller.contentOffset.x < -FLT_EPSILON;
+}
+
+- (bool)isExpandedToLeft {
+    return _scroller.contentOffset.x < -FLT_EPSILON;
+}
+
+- (bool)isTracking {
+    if (_manualScrollerPan)
+    {
+        UIGestureRecognizerState state = _scrollerPanGestureRecognizer.state;
+        return state == UIGestureRecognizerStateBegan || state == UIGestureRecognizerStateChanged;
+    }
+    return _scroller.isDragging || _scroller.isTracking;
+}
+
+- (void)setExpandable:(bool)expandable {
+    _expandable = expandable;
+    [self updateSwipeGestures];
+}
+
+- (void)setSwipeGesturesEnabled:(bool)enabled {
+    if (_swipeGesturesEnabled == enabled)
+        return;
+
+    if (!enabled && [self isExpanded])
+        [self setExpanded:false animated:false];
+
+    _swipeGesturesEnabled = enabled;
+    [self updateSwipeGestures];
+}
+
+- (void)setCommunitySwipeEnabled:(bool)enabled {
+    if (_communitySwipeEnabled == enabled)
+        return;
+    _communitySwipeEnabled = enabled;
+    [self updateSwipeGestures];
+}
+
+- (bool)swipeGesturesAvailable {
+    return _expandable && (_swipeGesturesEnabled || (_communitySwipeEnabled && [_leftButtonTypes containsObject:@(TGDialogListCellEditingControlsCommunity)]));
+}
+
+- (void)updateSwipeGestures {
+    bool scrollerEnabled = [self swipeGesturesAvailable];
+    if (!scrollerEnabled && [self isExpanded])
+        [self setExpanded:false animated:false];
+    _scroller.scrollEnabled = _manualScrollerPan ? false : scrollerEnabled;
+    _scrollerPanGestureRecognizer.enabled = scrollerEnabled;
+    _manualScrollerTapGestureRecognizer.enabled = scrollerEnabled;
+}
+
+- (void)resetButtons {
+    self.backgroundColor = [UIColor clearColor];
+
+    if (!_isExpanded && ABS(_scroller.bounds.origin.x) < FLT_EPSILON) {
+        _buttonsDirty = true;
+        for (NSArray *group in @[_leftButtonViews, _rightButtonViews]) {
+            for (UIButton *button in group)
+                button.hidden = true;
+        }
+        [self updateFrames];
+        return;
+    }
+
+    [self configureButtons];
+    [self updateFrames];
+}
+
+- (void)configureButtons {
+    _buttonsDirty = false;
+
+    bool branded = false;
+    CGSize bounds = self.bounds.size;
+    void(^processButtons)(NSArray *, NSMutableArray *, SEL, bool) = ^(NSArray *buttonTypes, NSMutableArray *buttons, SEL action, bool right)
+    {
+        NSUInteger index = 0;
+        for (NSNumber *nButtonType in buttonTypes) {
+            TGDialogListCellEditingControlButton buttonType = (TGDialogListCellEditingControlButton)[nButtonType intValue];
+            TGDialogListCellEditingButton *button = nil;
+            if (index < buttons.count) {
+                button = buttons[index];
+            } else {
+                button = [[TGDialogListCellEditingButton alloc] init];
+                [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+                [buttons addObject:button];
+                [self addSubview:button];
+            }
+            button.hidden = false;
+            button.labelOnly = _labelOnly;
+            button.smallLabel = _smallLabels;
+            button.offsetLabel = _offsetLabels;
+            NSString *animationName = false ? nil : animationForType(buttonType);
+            if (animationName.length > 0 && [[NSBundle mainBundle] pathForResource:animationName ofType:@"json"] == nil)
+                animationName = nil;
+            if (animationName.length > 0)
+                [button setTitle:buttonTitleForType(buttonType) animationName:animationName fallbackImage:buttonImageForType(buttonType, self.presentation)];
+            else
+                [button setTitle:buttonTitleForType(buttonType) image:buttonImageForType(buttonType, self.presentation)];
+            if (branded)
+            {
+                CGFloat buttonWidth = right ? TGDialogListEditingRightButtonWidth() : TGDialogListEditingLeftButtonWidth();
+                CGFloat sliceX = right ? bounds.width - (CGFloat)(buttonTypes.count - index) * buttonWidth : (CGFloat)index * buttonWidth;
+                CGRect slice = CGRectMake(MAX(0.0f, sliceX), 0.0f, buttonWidth, bounds.height);
+                [button setBackgroundColor:[TGPresentation brandedIOS6DialogActionColorForSize:bounds slice:slice] force:true];
+            }
+            else
+                [button setBackgroundColor:buttonColorForType(buttonType, self.presentation) force:true];
+            index++;
+        }
+        for (; index < buttons.count; index++) {
+            ((UIButton *)buttons[index]).hidden = true;
+        }
+    };
+
+    processButtons(_leftButtonTypes, _leftButtonViews, @selector(leftButtonPressed:), false);
+    processButtons(_rightButtonTypes, _rightButtonViews, @selector(rightButtonPressed:), true);
+}
+
+- (void)setFrame:(CGRect)frame {
+    bool shouldUpdateFrames = !CGSizeEqualToSize(frame.size, self.bounds.size);
+    [super setFrame:frame];
+    
+    if (shouldUpdateFrames) {
+        [self updateFrames];
+    }
+}
+
+- (void)updateFrames {
+    bool expanded = [self isExpanded];
+    CGFloat leftContentWidth = _leftButtonTypes.count * TGDialogListEditingLeftButtonWidth();
+    CGFloat rightContentWidth = TGDialogListEditingRightRevealWidth(_rightButtonTypes.count, self.bounds.size.width);
+    _scroller.frame = CGRectMake(0.0f, 0.0f, rightContentWidth, 1.0f);
+    _scroller.contentSize = CGSizeMake(rightContentWidth * 2.0f, 1.0f);
+    _scroller.contentInset = UIEdgeInsetsMake(0.0f, leftContentWidth, 0.0f, 0.0f);
+    if (!expanded)
+        [_scroller setContentOffset:CGPointZero animated:false];
+    [self updateButtonFrames:true];
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)__unused scrollView willDecelerate:(BOOL)decelerate {
+    if (_leftButtonTypes.count > 0) {
+        CGFloat offset = _scroller.bounds.origin.x;
+        
+        CGFloat leftContentWidth = _leftButtonTypes.count * TGDialogListEditingLeftButtonWidth();
+        CGFloat unconstrainedLeftOffsetFactor = MAX(0.0f, -offset / leftContentWidth);
+        
+        if (unconstrainedLeftOffsetFactor > 2.0f)
+        {
+            for (TGDialogListCellEditingButton *button in _leftButtonViews) {
+                if (button.triggered) {
+                    self.userInteractionEnabled = false;
+                    _ignoringScroll = true;
+                    _animatingCollapse = true;
+                    _scroller.contentInset = UIEdgeInsetsMake(0.0f, leftContentWidth, 0.0f, 0.0f);
+                    
+                    for (TGDialogListCellEditingButton *button in _rightButtonViews.reverseObjectEnumerator) {
+                        if (!button.hidden)
+                            button.alpha = 0.0f;
+                    }
+                    
+                    [UIView animateWithDuration:0.2 delay:0.0 options:7 << 16 animations:^{
+                        _scroller.contentOffset = CGPointZero;
+                        self.bounds = CGRectMake(_scroller.bounds.origin.x, 0.0f, self.bounds.size.width, self.bounds.size.height);
+                        CGFloat buttonWidth = TGDialogListEditingLeftButtonWidth();
+                        button.frame = CGRectMake(-buttonWidth, 0.0f, buttonWidth, self.bounds.size.height);
+                    } completion:^(__unused BOOL finished)
+                    {
+                        _ignoringScroll = false;
+                        _animatingCollapse = false;
+                        _scroller.contentOffset = CGPointZero;
+                        [self updateButtonFrames:true];
+                        
+                        for (TGDialogListCellEditingButton *button in _rightButtonViews.reverseObjectEnumerator) {
+                            if (!button.hidden)
+                                button.alpha = 1.0f;
+                        }
+                        
+                        if (_scheduledReset) {
+                            _scheduledReset = false;
+                            [self resetButtons];
+                        }
+                        
+                        self.userInteractionEnabled = true;
+                    }];
+                    
+                    TGDialogListCellEditingControlButton action = TGDialogListCellEditingControlsUnmute;
+                    for (NSUInteger index = 0; index < _leftButtonTypes.count; index++) {
+                        if (index < _leftButtonViews.count) {
+                            if (_leftButtonViews[index] == button) {
+                                action = (TGDialogListCellEditingControlButton)[_leftButtonTypes[index] intValue];
+                            }
+                        }
+                    }
+                    
+                    if (action == TGDialogListCellEditingControlsRead)
+                    {
+                        if (_toggleRead) {
+                            _toggleRead(true);
+                        }
+                    }
+                    else if (action == TGDialogListCellEditingControlsUnread)
+                    {
+                        if (_toggleRead) {
+                            _toggleRead(false);
+                        }
+                    }
+                    else if (action == TGDialogListCellEditingControlsCommunity)
+                    {
+                        if (_openCommunity) {
+                            _openCommunity();
+                        }
+                    }
+                }
+            }
+        }
+        else if (unconstrainedLeftOffsetFactor > 1.0f)
+        {
+            _scroller.contentInset = UIEdgeInsetsMake(0.0f, leftContentWidth, 0.0f, 0.0f);
+        }
+    }
+
+    if (!decelerate)
+        [self scheduleScrollerSettle];
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)__unused scrollView {
+    if ((_leftButtonTypes.count == 0 && _scroller.contentOffset.x < 0.0f) || (!_swipeGesturesEnabled && _scroller.contentOffset.x > 0.0f)) {
+        [_scroller setContentOffset:CGPointZero animated:false];
+        return;
+    }
+    [self updateButtonFrames];
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)__unused scrollView {
+    [self updateButtonFrames:true];
+    [self scheduleScrollerSettle];
+}
+
+- (void)scrollerPanStateChanged:(UIPanGestureRecognizer *)recognizer {
+    UIGestureRecognizerState state = recognizer.state;
+    if (state == UIGestureRecognizerStateEnded || state == UIGestureRecognizerStateCancelled || state == UIGestureRecognizerStateFailed)
+        [self scheduleScrollerSettle];
+}
+
+- (void)scheduleScrollerSettle {
+    __weak TGDialogListCellEditingControls *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf settleScrollerOffset];
+    });
+}
+
+- (CGFloat)restingScrollerOffsetForOffset:(CGFloat)offset {
+    CGFloat leftContentWidth = _leftButtonTypes.count * TGDialogListEditingLeftButtonWidth();
+    CGFloat rightContentWidth = _swipeGesturesEnabled ? TGDialogListEditingRightRevealWidth(_rightButtonTypes.count, self.bounds.size.width) : 0.0f;
+    if (offset < 0.0f && leftContentWidth > FLT_EPSILON && -offset >= leftContentWidth * 0.5f)
+        return -leftContentWidth;
+    if (offset > 0.0f && rightContentWidth > FLT_EPSILON && offset >= rightContentWidth * 0.5f)
+        return rightContentWidth;
+    return 0.0f;
+}
+
+- (void)settleScrollerOffset {
+    if (_animatingCollapse || _ignoringScroll || _scroller.isDragging || _scroller.isDecelerating || [self isTracking])
+        return;
+
+    CGFloat offset = _scroller.contentOffset.x;
+    CGFloat restingOffset = [self restingScrollerOffsetForOffset:offset];
+    if (ABS(restingOffset - offset) < FLT_EPSILON)
+        return;
+
+    if (ABS(restingOffset) < FLT_EPSILON)
+        [self setExpanded:false animated:true];
+    else
+        [self setExpanded:true toLeft:restingOffset < 0.0f animated:true];
+}
+
+- (void)updateButtonFrames {
+    [self updateButtonFrames:false];
+}
+
+- (void)updateButtonFrames:(bool)maybeReset {
+    if (_ignoringScroll)
+        return;
+    
+    CGFloat offset = _scroller.bounds.origin.x;
+    CGRect bounds = self.bounds;
+    
+    bool expanded = ABS(offset) > FLT_EPSILON;
+    if (_buttonsDirty && expanded)
+        [self configureButtons];
+    if (expanded != _isExpanded) {
+        _isExpanded = expanded;
+        if (_expandedUpdated) {
+            _expandedUpdated(expanded);
+        }
+    }
+    
+    self.bounds = CGRectMake(offset, 0.0f, bounds.size.width, bounds.size.height);
+    
+    if (_leftButtonTypes.count > 0) {
+        CGFloat leftContentWidth = _leftButtonTypes.count * TGDialogListEditingLeftButtonWidth();
+        CGFloat leftOffsetFactor = MIN(1.0f, MAX(0.0f, -offset / leftContentWidth));
+        CGFloat unconstrainedLeftOffsetFactor = MAX(0.0f, -offset / leftContentWidth);
+        CGFloat nextButtonEndOffset = 0.0f;
+        
+        bool playFeedback = false;
+        if (unconstrainedLeftOffsetFactor > 1.8f && unconstrainedLeftOffsetFactor < 2.2f)
+            [_feedbackGenerator prepare];
+        
+        for (TGDialogListCellEditingButton *button in _leftButtonViews) {
+            if (button.hidden) {
+                continue;
+            }
+            CGFloat buttonWidth = TGDialogListEditingLeftButtonWidth();
+            button.buttonWidth = buttonWidth;
+            button.frame = CGRectMake(-buttonWidth * (1.0f - leftOffsetFactor) + nextButtonEndOffset * leftOffsetFactor + offset, 0.0f, buttonWidth + MAX(-offset - leftContentWidth, 0.0f), bounds.size.height);
+            nextButtonEndOffset += buttonWidth;
+            
+            if (leftOffsetFactor >= 0.4f && _leftReadyToPlay)
+                [button playAnimation];
+            else if (leftOffsetFactor < FLT_EPSILON && maybeReset) {
+                [button resetAnimation];
+            }
+            
+            UIEdgeInsets targetContentInset = UIEdgeInsetsMake(0.0f, leftContentWidth, 0.0f, 0.0f);
+            if (unconstrainedLeftOffsetFactor > 1.0f)
+                targetContentInset = UIEdgeInsetsMake(0.0f, leftContentWidth * 2.0f, 0.0f, 0.0f);
+            
+            if (!UIEdgeInsetsEqualToEdgeInsets(targetContentInset, _scroller.contentInset))
+                _scroller.contentInset = targetContentInset;
+            
+            if (unconstrainedLeftOffsetFactor > 2.0f)
+            {
+                if (!button.triggered)
+                {
+                    [button setTriggered:true animated:_scroller.isDragging];
+                    playFeedback = true;
+                }
+            }
+            else
+            {
+                if (button.triggered)
+                {
+                    [button setTriggered:false animated:_scroller.isDragging];
+                    playFeedback = true;
+                }
+            }
+        }
+        
+        if (playFeedback && _scroller.isDragging)
+            [_feedbackGenerator impactOccurred];
+        
+        if (leftOffsetFactor >= 0.4f && leftOffsetFactor < 1.0f - FLT_EPSILON)
+            _leftReadyToPlay = false;
+        else if (leftOffsetFactor < FLT_EPSILON && (maybeReset || _scroller.contentOffset.x < FLT_EPSILON))
+            _leftReadyToPlay = true;
+    }
+    
+    if (_rightButtonTypes.count > 0) {
+        CGFloat buttonWidth = TGDialogListEditingRightButtonWidth();
+        CGFloat rightButtonsWidth = _rightButtonTypes.count * buttonWidth;
+        CGFloat rightContentWidth = TGDialogListEditingRightRevealWidth(_rightButtonTypes.count, bounds.size.width);
+        CGFloat rightOffsetFactor = MIN(1.0f, MAX(0.0f, offset / rightContentWidth));
+        CGFloat hiddenOverflow = MAX(0.0f, rightButtonsWidth - rightContentWidth);
+        CGFloat nextButtonEndOffset = bounds.size.width - buttonWidth + hiddenOverflow;
+        for (TGDialogListCellEditingButton *button in _rightButtonViews.reverseObjectEnumerator) {
+            if (button.hidden) {
+                continue;
+            }
+            button.buttonWidth = buttonWidth;
+            button.frame = CGRectMake(bounds.size.width * (1.0f - rightOffsetFactor) + nextButtonEndOffset * rightOffsetFactor + offset, 0.0f, buttonWidth, bounds.size.height);
+            nextButtonEndOffset -= buttonWidth;
+            
+            if (rightOffsetFactor >= 0.4f && _rightReadyToPlay)
+                [button playAnimation];
+            else if (rightOffsetFactor < FLT_EPSILON && maybeReset) {
+                [button resetAnimation];
+            }
+        }
+        
+        if (rightOffsetFactor >= 0.4f && rightOffsetFactor < 1.0f - FLT_EPSILON)
+            _rightReadyToPlay = false;
+        else if (rightOffsetFactor < FLT_EPSILON && (maybeReset || _scroller.contentOffset.x < FLT_EPSILON))
+            _rightReadyToPlay = true;
+    }
+}
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (!self.userInteractionEnabled)
+        return nil;
+    
+    UIView *result = [super hitTest:point withEvent:event];
+    if ([result isKindOfClass:[UIButton class]]) {
+        _scrollerPanGestureRecognizer.enabled = false;
+        return result;
+    }
+    _scrollerPanGestureRecognizer.enabled = [self swipeGesturesAvailable];
+    if (!_manualScrollerPan && (_scroller.bounds.origin.x > FLT_EPSILON || _scroller.bounds.origin.x < -FLT_EPSILON))
+        return _scroller;
+    return result;
+}
+
+- (void)leftButtonPressed:(UIButton *)button {
+    [self buttonPressed:button buttonTypes:_leftButtonTypes buttons:_leftButtonViews];
+    [self setExpanded:false animated:true];
+}
+
+- (void)rightButtonPressed:(UIButton *)button {
+    [self buttonPressed:button buttonTypes:_rightButtonTypes buttons:_rightButtonViews];
+}
+
+- (void)og_toggleArchivedTo:(bool)archived {
+    void (^handler)(bool) = _toggleArchived;
+    if (handler != nil)
+        handler(archived);
+}
+
+- (void)buttonPressed:(UIButton *)button buttonTypes:(NSArray *)buttonTypes buttons:(NSMutableArray *)buttons {
+    TGDialogListCellEditingControlButton action = TGDialogListCellEditingControlsUnmute;
+    for (NSUInteger index = 0; index < buttonTypes.count; index++) {
+        if (index < buttons.count) {
+            if (buttons[index] == button) {
+                action = (TGDialogListCellEditingControlButton)[buttonTypes[index] intValue];
+            }
+        }
+    }
+    switch (action) {
+        case TGDialogListCellEditingControlsDelete:
+            if (_requestDelete) {
+                _requestDelete();
+            }
+            break;
+        case TGDialogListCellEditingControlsPin:
+            if (_togglePinned) {
+                _togglePinned(true);
+            }
+            break;
+        case TGDialogListCellEditingControlsUnpin:
+            if (_togglePinned) {
+                _togglePinned(false);
+            }
+            break;
+        case TGDialogListCellEditingControlsMute:
+            if (_toggleMute) {
+                _toggleMute(true);
+            }
+            break;
+        case TGDialogListCellEditingControlsUnmute:
+            if (_toggleMute) {
+                _toggleMute(false);
+            }
+            break;
+        case TGDialogListCellEditingControlsBan:
+            if (_requestDelete) {
+                _requestDelete();
+            }
+            break;
+        case TGDialogListCellEditingControlsPromote:
+            if (_requestPromote) {
+                _requestPromote();
+            }
+            break;
+        case TGDialogListCellEditingControlsRestrict:
+            if (_requestRestrict) {
+                _requestRestrict();
+            }
+            break;
+        case TGDialogListCellEditingControlsGroup:
+            if (_toggleGrouped) {
+                _toggleGrouped(true);
+            }
+            break;
+        case TGDialogListCellEditingControlsUngroup:
+            if (_toggleGrouped) {
+                _toggleGrouped(false);
+            }
+            break;
+        case TGDialogListCellEditingControlsRead:
+            if (_toggleRead) {
+                _toggleRead(true);
+            }
+            break;
+        case TGDialogListCellEditingControlsUnread:
+            if (_toggleRead) {
+                _toggleRead(false);
+            }
+            break;
+        case TGDialogListCellEditingControlsArchive:
+            [self og_toggleArchivedTo:true];
+            break;
+        case TGDialogListCellEditingControlsUnarchive:
+            [self og_toggleArchivedTo:false];
+            break;
+        case TGDialogListCellEditingControlsCommunity:
+            if (_openCommunity) {
+                _openCommunity();
+            }
+            break;
+    }
+}
+
+
+- (BOOL)shouldBeginSwipe:(UIPanGestureRecognizer *)recognizer
+{
+    if (![self swipeGesturesAvailable])
+        return NO;
+    CGPoint velocity = [recognizer velocityInView:self];
+    if (ABS(velocity.x) <= ABS(velocity.y))
+        return NO;
+    if (!_swipeGesturesEnabled && ![self isExpanded] && velocity.x <= 0.0f)
+        return NO;
+    return YES;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer
+{
+    if (_manualScrollerPan && gestureRecognizer == _scrollerPanGestureRecognizer)
+        return [self shouldBeginSwipe:_scrollerPanGestureRecognizer];
+    return true;
+}
+
+- (void)scrollerPanGesture:(UIPanGestureRecognizer *)recognizer
+{
+    if (!_manualScrollerPan)
+        return;
+
+    CGFloat leftContentWidth = _leftButtonTypes.count * TGDialogListEditingLeftButtonWidth();
+    CGFloat rightContentWidth = _swipeGesturesEnabled ? TGDialogListEditingRightRevealWidth(_rightButtonTypes.count, self.bounds.size.width) : 0.0f;
+
+    if (recognizer.state == UIGestureRecognizerStateBegan)
+    {
+        _manualScrollerPanStartOffset = _scroller.contentOffset;
+    }
+    else if (recognizer.state == UIGestureRecognizerStateChanged)
+    {
+        CGPoint translation = [recognizer translationInView:self];
+        CGFloat offset = _manualScrollerPanStartOffset.x - translation.x;
+        CGFloat minimumOffset = leftContentWidth > FLT_EPSILON ? -leftContentWidth * 2.2f : 0.0f;
+        CGFloat maximumOffset = rightContentWidth > FLT_EPSILON ? rightContentWidth : 0.0f;
+        offset = MAX(minimumOffset, MIN(maximumOffset, offset));
+        [_scroller setContentOffset:CGPointMake(offset, 0.0f) animated:false];
+        [self updateButtonFrames];
+    }
+    else if (recognizer.state == UIGestureRecognizerStateEnded || recognizer.state == UIGestureRecognizerStateCancelled)
+    {
+        [self updateButtonFrames];
+        [self scrollViewDidEndDragging:_scroller willDecelerate:false];
+        if (_animatingCollapse)
+            return;
+
+        CGFloat offset = _scroller.contentOffset.x;
+        CGFloat velocity = [recognizer velocityInView:self].x;
+        CGFloat targetOffset = 0.0f;
+
+        if (offset > FLT_EPSILON && rightContentWidth > FLT_EPSILON)
+        {
+            if (offset > rightContentWidth * 0.35f || velocity < -250.0f)
+                targetOffset = rightContentWidth;
+        }
+        else if (offset < -FLT_EPSILON && leftContentWidth > FLT_EPSILON)
+        {
+            if (-offset > leftContentWidth * 0.35f || velocity > 250.0f)
+                targetOffset = -leftContentWidth;
+        }
+
+        [UIView animateWithDuration:0.2 animations:^
+        {
+            [_scroller setContentOffset:CGPointMake(targetOffset, 0.0f) animated:false];
+            [self updateButtonFrames];
+        } completion:^(__unused BOOL finished)
+        {
+            [self updateButtonFrames:true];
+        }];
+    }
+}
+
+- (void)scrollerTapGesture:(UITapGestureRecognizer *)recognizer {
+    if (recognizer.state == UIGestureRecognizerStateEnded && [self isExpanded]) {
+        [self setExpanded:false animated:true];
+    }
+}
+
+- (void)setLabelOnly:(bool)labelOnly {
+    _labelOnly = labelOnly;
+    [self resetButtons];
+}
+
+- (void)setSmallLabels:(bool)smallLabels {
+    _smallLabels = smallLabels;
+    [self resetButtons];
+}
+
+- (void)setOffsetLabels:(bool)offsetLabels {
+    _offsetLabels = offsetLabels;
+    [self resetButtons];
+}
+
+@end

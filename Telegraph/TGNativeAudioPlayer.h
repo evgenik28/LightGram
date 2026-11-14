@@ -1,0 +1,25 @@
+/*
+ * This is the source code of Telegram for iOS v. 1.1
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Peter Iakovlev, 2013.
+ */
+
+#import "TGAudioPlayer.h"
+#import <AVFoundation/AVFoundation.h>
+
+@interface TGNativeAudioPlayer : TGAudioPlayer
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 40000
+@property (nonatomic, readonly) AVPlayer *player;
+#else
+@property (nonatomic, readonly) AVAudioPlayer *player;
+#endif
+
+- (instancetype)initWithPath:(NSString *)path music:(bool)music controlAudioSession:(bool)controlAudioSession;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 40000
+- (instancetype)initWithURL:(NSURL *)url music:(bool)music controlAudioSession:(bool)controlAudioSession;
+#endif
+
+@end

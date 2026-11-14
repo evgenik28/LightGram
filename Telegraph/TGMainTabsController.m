@@ -1,0 +1,1811 @@
+#import "TGLightGramSettings.h"
+#import "TGMainTabsController.h"
+#import "../LightGramPlatform/LGPlatformGraphics.h"
+#import "../LightGramPlatform/LGPlatformUIKit.h"
+#import "../LightGramPlatform/LGPlatformDispatch.h"
+#import "../LightGramRuntime/LGRuntime.h"
+
+#import "../submodules/LegacyComponents/LegacyComponents/LegacyComponents.h"
+
+#import <QuartzCore/QuartzCore.h>
+
+#import "TGAppDelegate.h"
+#import "TGCommon.h"
+#import "TGDebugController.h"
+
+#import "TGPresentation.h"
+
+#import "../LightGramUI/Core/LGTheme.h"
+#import "../LightGramUI/Core/LGTabBarAppearance.h"
+#import "../LightGramUI/Core/LGSurfaceStyle.h"
+#import "../LightGramUI/Core/LGSurfaceRenderer.h"
+#import "../LightGramUI/Core/LGAssets.h"
+
+static NSString *const TGMainTabsContactsIconName = @"tabbar-contacts";
+static NSString *const TGMainTabsCallsIconName = @"tabbar-calls";
+static NSString *const TGMainTabsChatsIconName = @"tabbar-chats";
+static NSString *const TGMainTabsSettingsIconName = @"tabbar-settings";
+
+static UIImage *TGMainTabsBrandedIOS6Icon(NSString *name, UIImage *fallbackTemplate, bool selected)
+{
+    LGTheme *theme = [LGTheme brandedTheme];
+    UIImage *iconTemplate = [theme.assets imageNamed:name inDirectory:@"ios6style"];
+    if (iconTemplate == nil)
+        iconTemplate = fallbackTemplate;
+    if (iconTemplate == nil)
+        return nil;
+
+    LGTabBarAppearance *appearance = theme.tabBarAppearance;
+    NSArray *colors = selected ? appearance.selectedIconGradientColors : appearance.iconGradientColors;
+    NSArray *locations = selected ? appearance.selectedIconGradientLocations : appearance.iconGradientLocations;
+    NSArray *shadows = selected ? appearance.selectedIconShadows : appearance.iconShadows;
+    return [theme.surfaceRenderer iconImageWithTemplate:iconTemplate gradientColors:colors locations:locations shadows:shadows outsets:[appearance iconOutsets]];
+}
+
+static void TGMainTabsApplyTabLabelStyle(UILabel *label, TGPresentation *presentation)
+{
+    if (false)
+    {
+        LGTabBarAppearance *appearance = [LGTheme brandedTheme].tabBarAppearance;
+        label.textColor = appearance.titleColor;
+        label.highlightedTextColor = appearance.titleColor;
+        if (LGPlatformLayerSupportsShadow(label.layer))
+        {
+            label.shadowColor = [UIColor clearColor];
+            label.shadowOffset = CGSizeZero;
+            LGPlatformSetLayerShadow(label.layer, appearance.titleShadowColor, 1.0f, appearance.titleShadowRadius, appearance.titleShadowOffset);
+        }
+        else
+        {
+            label.shadowColor = appearance.titleShadowColor;
+            label.shadowOffset = appearance.titleShadowOffset;
+        }
+        return;
+    }
+
+    LGPlatformSetLayerShadow(label.layer, nil, 0.0f, 0.0f, CGSizeZero);
+
+    label.textColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.tabTextColor : UIColorRGB(0xc7c9cb)) : presentation.pallete.tabTextColor;
+    label.highlightedTextColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.tabActiveIconColor : UIColorRGB(0xffffff)) : presentation.pallete.tabActiveIconColor;
+    label.shadowColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? UIColorRGBA(0x000000, presentation.pallete.isDark ? 0.85f : 0.2f) : UIColorRGBA(0x000000, 0.85f)) : [UIColor clearColor];
+    label.shadowOffset = false ? CGSizeMake(0.0f, -1.0f) : CGSizeZero;
+}
+
+static UIFont *TGMainTabsTabLabelFont(bool landscape)
+{
+    if (landscape)
+        return false ? TGBoldSystemFontOfSize(12.0f) : TGSystemFontOfSize(12.0f);
+    if (false)
+        return [LGTheme brandedTheme].tabBarAppearance.titleFont;
+    if (false)
+        return TGBoldSystemFontOfSize(TGIsPad() ? 11.0f : 10.0f);
+    return TGMediumSystemFontOfSize(TGIsPad() ? 11.0f : 10.0f);
+}
+
+static UIImage *OGCompatTabBundleImage(NSString *name)
+{
+    bool retina = [UIScreen mainScreen].scale > 1.5f;
+    NSString *path = [[NSBundle mainBundle] pathForResource:retina ? [name stringByAppendingString:@"@2x"] : name ofType:@"png" inDirectory:@"ClassicIOS6"];
+    UIImage *loaded = path.length != 0 ? [UIImage imageWithContentsOfFile:path] : nil;
+    if (loaded != nil && retina && loaded.CGImage != NULL)
+        return [UIImage imageWithCGImage:loaded.CGImage scale:2.0f orientation:UIImageOrientationUp];
+    return loaded;
+}
+
+static UIImage *TGMainTabsClassicIOS6ResizableImageWithHorizontalCap(NSString *name, CGFloat capWidth)
+{
+    UIImage *image = OGCompatTabBundleImage(name);
+    if (image == nil)
+        return nil;
+
+    if ([image respondsToSelector:@selector(resizableImageWithCapInsets:)])
+        return [image resizableImageWithCapInsets:UIEdgeInsetsMake(0.0f, capWidth, 0.0f, capWidth)];
+
+    NSInteger leftCapWidth = (NSInteger)floor(capWidth);
+    if ((CGFloat)(leftCapWidth * 2 + 1) > image.size.width)
+        leftCapWidth = MAX(0, (NSInteger)floor((image.size.width - 1.0f) / 2.0f));
+
+    return [image stretchableImageWithLeftCapWidth:leftCapWidth topCapHeight:0];
+}
+
+static UIImage *TGMainTabsClassicResizableImage(NSString *name)
+{
+    return TGMainTabsClassicIOS6ResizableImageWithHorizontalCap(name, 1.0f);
+}
+
+static UIColor *TGMainTabsClassicSelectedColor(TGPresentation *presentation)
+{
+    if (false && presentation.pallete.isDark)
+        return UIColorRGB(0x2b78c5);
+    return presentation.pallete.tabActiveIconColor;
+}
+
+static UIImage *OGCompatTabHighlightedImage(NSString *name, TGPresentation *presentation)
+{
+    return [TGPresentation classicIOS6ThemedImage:OGCompatTabBundleImage(name) tintColor:TGMainTabsClassicSelectedColor(presentation) alpha:0.6f];
+}
+
+static NSInteger const TGMainTabsClassicIOS4TitleTag = 0x49365454;
+
+static void TGMainTabsConfigureClassicIOS4TitleLabel(UILabel *label, NSString *title, TGPresentation *presentation)
+{
+    if (presentation == nil)
+        presentation = TGPresentation.current;
+
+    label.backgroundColor = [UIColor clearColor];
+    label.font = TGBoldSystemFontOfSize(17.0f);
+    label.text = title;
+    if (false)
+    {
+        label.textColor = [UIColor whiteColor];
+        label.shadowColor = presentation.pallete.isDark ? UIColorRGBA(0x000000, 0.9f) : UIColorRGBA(0x1f3446, 0.9f);
+        label.shadowOffset = CGSizeMake(0.0f, -1.0f);
+    }
+    else
+    {
+        UIColor *titleColor = presentation.pallete.navigationTitleColor;
+        label.textColor = titleColor != nil ? titleColor : [UIColor blackColor];
+        label.shadowColor = [UIColor clearColor];
+        label.shadowOffset = CGSizeZero;
+    }
+    [label sizeToFit];
+}
+
+@protocol TGTabBarDelegate <NSObject>
+
+- (void)tabBarSelectedItem:(int)index;
+- (void)tabBarLongPressedItem:(int)index;
+
+@end
+
+
+@interface TGTabBarBadge : UIView
+{
+    UIImageView *_backgroundView;
+    UILabel *_label;
+}
+
+@property (nonatomic, strong) UIImage *image;
+
+@end
+
+@implementation TGTabBarBadge
+
+- (instancetype)initWithPresentation:(TGPresentation *)presentation
+{
+    self = [super initWithFrame:CGRectMake(0, 0, 20.0f, 20.0f)];
+    if (self != nil)
+    {
+        self.hidden = true;
+        self.userInteractionEnabled = false;
+        self.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    
+        _backgroundView = [[UIImageView alloc] init];
+        [self addSubview:_backgroundView];
+        
+        _label = [[UILabel alloc] init];
+        _label.text = @"1";
+        [_label sizeToFit];
+        _label.text = nil;
+        _label.backgroundColor = [UIColor clearColor];
+        _label.font = TGSystemFontOfSize(13);
+        _label.textAlignment = NSTextAlignmentCenter;
+        [self addSubview:_label];
+        
+        [self setPresentation:presentation];
+    }
+    return self;
+}
+
+- (void)setPresentation:(TGPresentation *)presentation
+{
+    if (false)
+    {
+        _backgroundView.image = [TGPresentation brandedIOS6BadgeImage];
+        LGPlatformApplyViewShadow(_backgroundView, [UIColor blackColor], 0.80f, 1.5f, CGSizeMake(0.0f, 2.0f));
+        UIFont *badgeFont = TGBoldSystemFontOfSize(11.0f);
+        _label.font = badgeFont != nil ? badgeFont : TGBoldSystemFontOfSize(11.0f);
+        _label.textColor = [UIColor whiteColor];
+        _label.shadowColor = [UIColor clearColor];
+        _label.shadowOffset = CGSizeZero;
+    }
+    else if (false)
+    {
+        UIImage *badgeImage = TGMainTabsClassicIOS6ResizableImageWithHorizontalCap(@"TabBarBadge", 10.0f);
+        UIColor *badgeColor = presentation.pallete.isDark ? TGMainTabsClassicSelectedColor(presentation) : presentation.pallete.tabBadgeColor;
+        _backgroundView.image = [TGPresentation classicIOS6ThemedImage:badgeImage tintColor:badgeColor alpha:presentation.pallete.isDark ? 0.95f : 0.5f];
+        LGPlatformApplyViewShadow(_backgroundView, nil, 0.0f, 0.0f, CGSizeZero);
+        _label.font = TGBoldSystemFontOfSize(12.0f);
+        _label.textColor = presentation.pallete.isDark ? [UIColor whiteColor] : (presentation.pallete.tabBadgeTextColor ?: [UIColor whiteColor]);
+        _label.shadowColor = [TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? UIColorRGBA(0x000000, presentation.pallete.isDark ? 0.7f : 0.25f) : UIColorRGBA(0x000000, 0.85f);
+        _label.shadowOffset = CGSizeMake(0.0f, -1.0f);
+    }
+    else
+    {
+        _backgroundView.image = presentation.images.tabBarBadgeImage;
+        LGPlatformApplyViewShadow(_backgroundView, nil, 0.0f, 0.0f, CGSizeZero);
+        _label.font = TGSystemFontOfSize(13.0f);
+        _label.textColor = presentation.pallete.tabBadgeTextColor;
+        _label.shadowColor = [UIColor clearColor];
+        _label.shadowOffset = CGSizeZero;
+    }
+}
+
+- (void)setCount:(int)count
+{
+    if (count <= 0)
+    {
+        self.hidden = true;
+    }
+    else
+    {
+        NSString *text = nil;
+        
+        if (false)
+        {
+            text = [TGPresentation brandedIOS6BadgeTextForCount:count];
+        }
+        else if (TGIsLocaleArabic())
+        {
+            text = [TGStringUtils stringWithLocalizedNumber:count];
+        }
+        else
+        {
+            if (count < 1000)
+                text = [[NSString alloc] initWithFormat:@"%d", count];
+            else if (TGLightGramUsesExactNumbers())
+                text = TGLightGramExactCountString(count);
+            else if (count < 1000000)
+                text = [[NSString alloc] initWithFormat:@"%dK", count / 1000];
+            else
+                text = [[NSString alloc] initWithFormat:@"%dM", count / 1000000];
+        }
+        
+        _label.text = text;
+        [_label sizeToFit];
+        self.hidden = false;
+        
+        CGRect frame = _backgroundView.frame;
+        CGFloat textWidth = CGCeil(_label.frame.size.width);
+        if (false)
+        {
+            frame.size.width = MAX(18.0f, textWidth + 10.0f);
+            frame.size.height = 18.0f;
+            frame.origin.y = 0.0f;
+        }
+        else
+        {
+            frame.size.width = count < 10 ? 20.0f : MAX(20.0f, textWidth + 10.0f + TGScreenPixel * 2.0f);
+            frame.size.height = 20.0f;
+            frame.origin.y = -1.0f;
+        }
+        frame.origin.x = _backgroundView.superview.frame.size.width - frame.size.width - 1.0f;
+        _backgroundView.frame = frame;
+        if (false)
+            _backgroundView.image = [TGPresentation brandedIOS6BadgeImageForWidth:frame.size.width];
+        
+        CGRect labelFrame = _label.frame;
+        labelFrame.origin.x = frame.origin.x;
+        labelFrame.origin.y = false ? frame.origin.y : (false ? 0.0f : 1.0f);
+        labelFrame.size.width = frame.size.width;
+        if (false)
+        {
+            labelFrame.origin.y = frame.origin.y;
+            labelFrame.size.height = frame.size.height;
+        }
+        _label.frame = labelFrame;
+    }
+}
+
+@end
+
+static const CGFloat TGTabBarButtonAvatarSide = 26.0f;
+static const CGFloat TGTabBarButtonAvatarRingSide = 31.0f;
+
+@interface TGTabBarButton : UIView
+{
+    UILabel *_label;
+    TGPresentation *_presentation;
+    UIImage *_compatSelectedImage;
+    CAGradientLayer *_compatSelectionLayer;
+    TGLetteredAvatarView *_avatarView;
+    UIView *_avatarRingView;
+    TGUser *_avatarUser;
+    NSString *_avatarUrl;
+}
+
+@property (nonatomic, readonly) UIImageView *imageView;
+@property (nonatomic, assign, getter=isSelected) bool selected;
+@property (nonatomic, assign) bool landscape;
+@property (nonatomic, assign) CGFloat contentCenterX;
+@property (nonatomic, strong) LGTabBarLayout *brandedLayout;
+
+- (void)og_compat_setSelectedGlossImage:(UIImage *)image;
+- (void)setTitle:(NSString *)title;
+- (void)setAvatarUser:(TGUser *)user;
+
+@end
+
+@implementation TGTabBarButton
+
+- (instancetype)initWithImage:(UIImage *)image title:(NSString *)title presentation:(TGPresentation *)presentation
+{
+    self = [super init];
+    if (self != nil)
+    {
+        CFAbsoluteTime detailStart = CFAbsoluteTimeGetCurrent();
+        _presentation = presentation;
+        self.accessibilityTraits = UIAccessibilityTraitButton;
+        self.accessibilityLabel = title;
+
+        detailStart = CFAbsoluteTimeGetCurrent();
+        _imageView = [[UIImageView alloc] initWithImage:image];
+        [self addSubview:_imageView];
+
+        detailStart = CFAbsoluteTimeGetCurrent();
+        _label = [[UILabel alloc] init];
+        detailStart = CFAbsoluteTimeGetCurrent();
+        _label.backgroundColor = [UIColor clearColor];
+        TGMainTabsApplyTabLabelStyle(_label, presentation);
+        detailStart = CFAbsoluteTimeGetCurrent();
+        _label.font = TGMainTabsTabLabelFont(false);
+        detailStart = CFAbsoluteTimeGetCurrent();
+        _label.text = title;
+        _label.textAlignment = NSTextAlignmentLeft;
+        [_label sizeToFit];
+        [self addSubview:_label];
+    }
+    return self;
+}
+
+- (void)setTitle:(NSString *)title
+{
+    self.accessibilityLabel = title;
+    _label.text = title;
+    [_label sizeToFit];
+    [self setNeedsLayout];
+}
+
+- (void)setImage:(UIImage *)image presentation:(TGPresentation *)presentation
+{
+    _presentation = presentation;
+    
+    _imageView.image = image;
+    if (_imageView.highlighted)
+    {
+        _imageView.highlightedImage = _compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(image, false ? TGMainTabsClassicSelectedColor(presentation) : presentation.pallete.tabActiveIconColor);
+        _imageView.highlighted = false;
+        _imageView.highlighted = true;
+    }
+    else
+        _imageView.highlightedImage = nil;
+    
+    TGMainTabsApplyTabLabelStyle(_label, presentation);
+    _label.font = TGMainTabsTabLabelFont(_landscape);
+    [_label sizeToFit];
+    [self updateAvatarRing];
+    [self setNeedsLayout];
+}
+
+- (void)setAvatarUser:(TGUser *)user
+{
+    if (user == nil)
+    {
+        [_avatarView removeFromSuperview];
+        _avatarView = nil;
+        [_avatarRingView removeFromSuperview];
+        _avatarRingView = nil;
+        _avatarUser = nil;
+        _avatarUrl = nil;
+        _imageView.hidden = false;
+        return;
+    }
+
+    if (_avatarView == nil)
+    {
+        _avatarRingView = [[UIView alloc] initWithFrame:CGRectMake(0.0f, 0.0f, TGTabBarButtonAvatarRingSide, TGTabBarButtonAvatarRingSide)];
+        _avatarRingView.userInteractionEnabled = false;
+        _avatarRingView.backgroundColor = [UIColor clearColor];
+        _avatarRingView.layer.cornerRadius = TGTabBarButtonAvatarRingSide / 2.0f;
+        _avatarRingView.layer.borderWidth = 1.5f;
+        [self addSubview:_avatarRingView];
+
+        _avatarView = [[TGLetteredAvatarView alloc] initWithFrame:CGRectMake(0.0f, 0.0f, TGTabBarButtonAvatarSide, TGTabBarButtonAvatarSide)];
+        _avatarView.userInteractionEnabled = false;
+        [_avatarView setSingleFontSize:11.0f doubleFontSize:11.0f useBoldFont:true];
+        _avatarView.fadeTransition = true;
+        __weak TGTabBarButton *weakSelf = self;
+        _avatarView.progressHandler = ^(TGRemoteImageView *imageView, float progress)
+        {
+            __strong TGTabBarButton *strongSelf = weakSelf;
+            if (strongSelf != nil && progress >= 1.0f && [imageView currentImage] == nil)
+                TGLog(@"TABAVATAR load failed url=%@", strongSelf->_avatarUrl);
+        };
+        [self addSubview:_avatarView];
+    }
+
+    NSString *avatarUrl = user.photoFullUrlSmall.length != 0 ? user.photoFullUrlSmall : user.photoUrlSmall;
+    bool changed = _avatarUser.uid != user.uid || !TGStringCompare(_avatarUrl, avatarUrl) || !TGStringCompare(_avatarUser.firstName, user.firstName) || !TGStringCompare(_avatarUser.lastName, user.lastName);
+    _avatarUser = user;
+    _avatarUrl = avatarUrl;
+    if (changed)
+        [self loadAvatarImage];
+    else
+        [self reloadAvatarImageIfFailed];
+
+    _imageView.hidden = true;
+    [self updateAvatarRing];
+    [self setNeedsLayout];
+}
+
+- (void)loadAvatarImage
+{
+    UIImage *placeholder = [_presentation.images avatarPlaceholderWithDiameter:TGTabBarButtonAvatarSide];
+    if (_avatarUrl.length != 0)
+        [_avatarView loadImage:_avatarUrl filter:[[NSString alloc] initWithFormat:@"circle:%.0fx%.0f", TGTabBarButtonAvatarSide, TGTabBarButtonAvatarSide] placeholder:placeholder];
+    else
+        [_avatarView loadUserPlaceholderWithSize:CGSizeMake(TGTabBarButtonAvatarSide, TGTabBarButtonAvatarSide) uid:_avatarUser.uid firstName:_avatarUser.firstName lastName:_avatarUser.lastName placeholder:placeholder];
+}
+
+- (void)reloadAvatarImageIfFailed
+{
+    if (_avatarView != nil && _avatarUrl.length != 0 && [_avatarView currentImage] == nil)
+        [self loadAvatarImage];
+}
+
+- (void)didMoveToWindow
+{
+    [super didMoveToWindow];
+    if (self.window != nil)
+        [self reloadAvatarImageIfFailed];
+}
+
+- (void)updateAvatarRing
+{
+    _avatarRingView.layer.borderColor = (_presentation.pallete.tabActiveIconColor ?: [UIColor blackColor]).CGColor;
+    _avatarRingView.hidden = !_selected;
+}
+
+- (void)layoutAvatar
+{
+    if (_avatarView == nil)
+        return;
+    CGPoint center = _imageView.center;
+    _avatarView.center = center;
+    _avatarRingView.center = center;
+}
+
+- (void)og_compat_setSelectedGlossImage:(UIImage *)image
+{
+    _compatSelectedImage = image;
+    if (_compatSelectedImage != nil && _compatSelectionLayer == nil && !false)
+    {
+        _compatSelectionLayer = [CAGradientLayer layer];
+        UIImage *selectionImage = TGMainTabsClassicResizableImage(@"TabBarSelected");
+        selectionImage = [TGPresentation classicIOS6ThemedImage:selectionImage tintColor:([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? _presentation.pallete.selectionColor : nil) alpha:0.75f];
+        _compatSelectionLayer.contents = (id)selectionImage.CGImage;
+        LGPlatformSetLayerContentsScale(_compatSelectionLayer, selectionImage.scale);
+        _compatSelectionLayer.contentsGravity = kCAGravityResize;
+        [self.layer insertSublayer:_compatSelectionLayer atIndex:0];
+    }
+    _compatSelectionLayer.hidden = _compatSelectedImage == nil || !_selected || false;
+    _imageView.highlightedImage = _selected ? (_compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(_imageView.image, false ? TGMainTabsClassicSelectedColor(_presentation) : _presentation.pallete.tabActiveIconColor)) : nil;
+}
+
+- (void)setSelected:(bool)selected
+{
+    _selected = selected;
+    if (selected)
+        [self reloadAvatarImageIfFailed];
+    _compatSelectionLayer.hidden = _compatSelectedImage == nil || !selected || false;
+    if (_imageView.highlightedImage == nil && selected)
+        _imageView.highlightedImage = _compatSelectedImage != nil ? _compatSelectedImage : TGTintedImage(_imageView.image, false ? TGMainTabsClassicSelectedColor(_presentation) : _presentation.pallete.tabActiveIconColor);
+    _imageView.highlighted = selected;
+    _label.highlighted = selected;
+    [self updateAvatarRing];
+}
+
+- (void)setContentCenterX:(CGFloat)contentCenterX
+{
+    if (ABS(_contentCenterX - contentCenterX) > FLT_EPSILON)
+    {
+        _contentCenterX = contentCenterX;
+        [self setNeedsLayout];
+    }
+}
+
+- (void)setBrandedLayout:(LGTabBarLayout *)brandedLayout
+{
+    if (_brandedLayout != brandedLayout)
+    {
+        _brandedLayout = brandedLayout;
+        [self setNeedsLayout];
+    }
+}
+
+- (void)layoutBrandedPortrait
+{
+    LGTabBarAppearance *appearance = [LGTheme brandedTheme].tabBarAppearance;
+    LGTabBarLayout *layout = _brandedLayout != nil ? _brandedLayout : [appearance layoutForItemCount:0];
+    UIEdgeInsets outsets = [appearance iconOutsets];
+    _imageView.transform = CGAffineTransformIdentity;
+    CGSize imageSize = _imageView.image.size;
+    CGFloat glyphWidth = imageSize.width - outsets.left - outsets.right;
+    _imageView.frame = CGRectMake(CGRound(_contentCenterX - glyphWidth / 2.0f) - outsets.left, layout.iconTopInset - outsets.top, imageSize.width, imageSize.height);
+
+    if (_label.font != appearance.titleFont)
+    {
+        _label.font = appearance.titleFont;
+        [_label sizeToFit];
+    }
+    CGFloat labelWidth = MIN(CGCeil(_label.frame.size.width), self.frame.size.width);
+    _label.frame = CGRectMake(CGRound(_contentCenterX - labelWidth / 2.0f), self.frame.size.height - layout.titleBottomInset - layout.titleHeight, labelWidth, layout.titleHeight);
+}
+
+- (void)layoutSubviews
+{
+    if (_compatSelectionLayer != nil)
+        _compatSelectionLayer.frame = self.bounds;
+
+    if (false && !_landscape)
+    {
+        [self layoutBrandedPortrait];
+        [self layoutAvatar];
+        return;
+    }
+
+    CGFloat imageVerticalOffset = [self iconVerticalOffset];
+    if (false)
+        imageVerticalOffset += (32.0f - _imageView.bounds.size.height) / 2.0f;
+
+    _imageView.frame = CGRectMake(floor((self.frame.size.width - _imageView.frame.size.width) / 2), imageVerticalOffset, _imageView.frame.size.width, _imageView.frame.size.height);
+    
+    _imageView.center = CGPointMake(self.frame.size.width / 2, imageVerticalOffset + _imageView.bounds.size.height / 2.0f);
+    
+    if (_landscape)
+    {
+        _label.font = TGMainTabsTabLabelFont(true);
+        if (CGAffineTransformIsIdentity(_imageView.transform))
+        {
+            [UIView animateWithDuration:0.2 animations:^
+            {
+                _imageView.transform = CGAffineTransformMakeScale(0.6667f, 0.6667f);
+            }];
+            [_label sizeToFit];
+        }
+        
+        CGFloat width = CGCeil(_imageView.frame.size.width + 6.0f + _label.frame.size.width);
+        _imageView.center = CGPointMake((self.frame.size.width - width) / 2.0f + _imageView.frame.size.width / 2.0f, _imageView.bounds.size.height / 2.0f + 1.0f);
+    
+        _label.frame = CGRectMake(round(((self.frame.size.width - width) / 2.0f) + _imageView.frame.size.width + 6.0f), 9.0f, _label.frame.size.width, _label.frame.size.height);
+    }
+    else
+    {
+        _label.font = TGMainTabsTabLabelFont(false);
+        if (!CGAffineTransformIsIdentity(_imageView.transform))
+        {
+            [UIView animateWithDuration:0.2 animations:^
+            {
+                _imageView.transform = CGAffineTransformIdentity;
+            }];
+            
+            [_label sizeToFit];
+        }
+        _imageView.center = CGPointMake(self.frame.size.width / 2, imageVerticalOffset + _imageView.bounds.size.height / 2.0f);
+        _label.frame = CGRectMake(round((self.frame.size.width - _label.frame.size.width) / 2.0f), [self labelVerticalOffset], _label.frame.size.width, _label.frame.size.height);
+    }
+    [self layoutAvatar];
+}
+
+- (void)setLandscape:(bool)landscape
+{
+    if (_landscape != landscape)
+    {
+        _landscape = landscape;
+        [self setNeedsLayout];
+    }
+}
+
+- (CGFloat)iconVerticalOffset
+{
+    static CGFloat offset = 0.0f;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        if (!TGIsPad())
+            offset = 4;
+        else
+            offset = 5 + TGRetinaPixel;
+    });
+    return offset;
+}
+
+- (CGFloat)labelVerticalOffset
+{
+    static CGFloat offset = 0.0f;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^
+    {
+        if (!TGIsPad())
+            offset = 35 - TGScreenPixel;
+        else
+            offset = 36;
+    });
+    return offset;
+}
+
+@end
+
+
+@interface TGTabBar : UIView <UIGestureRecognizerDelegate>
+{
+    bool _skipNextLayout;
+    
+    NSNumber *_unreadArrowUp;
+    int _callsCount;
+    int _messagesCount;
+    UIImageView *_classicBackgroundView;
+    NSString *_brandedBackgroundKey;
+}
+
+@property (nonatomic, weak) id<TGTabBarDelegate> tabDelegate;
+
+@property (nonatomic, strong) UIView *backgroundView;
+@property (nonatomic, strong) UIView *stripeView;
+
+@property (nonatomic, strong) NSMutableArray *tabButtons;
+@property (nonatomic, strong) TGTabBarButton *contactsButton;
+@property (nonatomic, strong) TGTabBarButton *callsButton;
+@property (nonatomic, strong) TGTabBarButton *chatsButton;
+@property (nonatomic, strong) TGTabBarButton *settingsButton;
+@property (nonatomic, strong) TGTabBarButton *profileButton;
+@property (nonatomic, assign) bool callsHidden;
+@property (nonatomic, assign) bool contactsHidden;
+@property (nonatomic, assign) bool profileHidden;
+@property (nonatomic, strong) NSArray *displayOrder;
+
+@property (nonatomic, strong) TGTabBarBadge *callsBadge;
+@property (nonatomic, strong) TGTabBarBadge *messagesBadge;
+
+@property (nonatomic, assign) UIEdgeInsets safeAreaInset;
+@property (nonatomic, assign) bool landscape;
+
+@property (nonatomic) int selectedIndex;
+
+
+@property (nonatomic, strong) TGPresentation *presentation;
+
++ (NSArray *)classicDisplayOrder;
++ (NSArray *)modernDisplayOrder;
+- (void)setModernLayout:(bool)modernLayout animated:(bool)animated;
+- (void)setProfileUser:(TGUser *)user;
+- (NSArray *)visibleTabButtons;
+
+@end
+
+@implementation TGTabBar
+
+- (void)startupLocalizationUpdated:(NSNotification *)notification
+{
+    (void)notification;
+    [_contactsButton setTitle:TGStartupLocalized(@"Contacts.TabTitle")];
+    [_callsButton setTitle:TGStartupLocalized(@"Calls.TabTitle")];
+    [_chatsButton setTitle:TGStartupLocalized(@"DialogList.TabTitle")];
+    [_settingsButton setTitle:TGStartupLocalized(@"Settings.TabTitle")];
+    [_profileButton setTitle:TGLocalized(@"LightGramProfile.TabTitle")];
+}
+
+- (void)dealloc
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:TGStartupLocalizationUpdatedNotification object:nil];
+}
+
+- (instancetype)initWithFrame:(CGRect)frame presentation:(TGPresentation *)presentation
+{
+    self = [super initWithFrame:frame];
+    if (self != nil)
+    {
+        CFAbsoluteTime phaseStart = CFAbsoluteTimeGetCurrent();
+        self.multipleTouchEnabled = false;
+        self.exclusiveTouch = true;
+        
+        _presentation = presentation;
+        
+        _backgroundView = [[UIView alloc] init];
+        if (false)
+        {
+            _backgroundView.backgroundColor = [UIColor clearColor];
+            [self installClassicBackgroundViewIfNeeded];
+        }
+        else
+            _backgroundView.backgroundColor = presentation.pallete.barBackgroundColor;
+        _backgroundView.frame = self.bounds;
+        [self addSubview:_backgroundView];
+        
+        _stripeView = [[UIView alloc] init];
+        _stripeView.backgroundColor = false ? ([TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.barSeparatorColor : UIColorRGB(0xa4a8ac)) : presentation.pallete.barSeparatorColor;
+        _stripeView.hidden = false;
+        [self addSubview:_stripeView];
+        
+        _tabButtons = [[NSMutableArray alloc] init];
+        phaseStart = CFAbsoluteTimeGetCurrent();
+        
+        UIImage *contactsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, false) : presentation.images.tabBarContactsIcon;
+        UIImage *callsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, false) : presentation.images.tabBarCallsIcon;
+        UIImage *chatsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, false) : presentation.images.tabBarChatsIcon;
+        UIImage *settingsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, false) : presentation.images.tabBarSettingsIcon;
+        phaseStart = CFAbsoluteTimeGetCurrent();
+
+        CFAbsoluteTime buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        bool constrainedStartupLocalization = LGPlatformUsesConstrainedBackgroundExecution();
+        NSString *contactsTitle = constrainedStartupLocalization ? TGStartupLocalized(@"Contacts.TabTitle") : TGLocalized(@"Contacts.TabTitle");
+        buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        NSString *chatsTitle = constrainedStartupLocalization ? TGStartupLocalized(@"DialogList.TabTitle") : TGLocalized(@"DialogList.TabTitle");
+        buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        NSString *settingsTitle = constrainedStartupLocalization ? TGStartupLocalized(@"Settings.TabTitle") : TGLocalized(@"Settings.TabTitle");
+        buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        NSString *callsTitle = constrainedStartupLocalization ? TGStartupLocalized(@"Calls.TabTitle") : TGLocalized(@"Calls.TabTitle");
+
+        buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        _contactsButton = [[TGTabBarButton alloc] initWithImage:contactsImage title:contactsTitle presentation:presentation];
+        buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        _chatsButton = [[TGTabBarButton alloc] initWithImage:chatsImage title:chatsTitle presentation:presentation];
+        buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        _settingsButton = [[TGTabBarButton alloc] initWithImage:settingsImage title:settingsTitle presentation:presentation];
+        buttonPhaseStart = CFAbsoluteTimeGetCurrent();
+        _callsButton = [[TGTabBarButton alloc] initWithImage:callsImage title:callsTitle presentation:presentation];
+        _profileButton = [[TGTabBarButton alloc] initWithImage:presentation.images.tabBarProfileIcon title:TGLocalized(@"LightGramProfile.TabTitle") presentation:presentation];
+        phaseStart = CFAbsoluteTimeGetCurrent();
+        if (false)
+        {
+            if (false)
+            {
+                [_contactsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, true)];
+                [_callsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, true)];
+                [_chatsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, true)];
+                [_settingsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, true)];
+            }
+            else
+            {
+                [_contactsButton og_compat_setSelectedGlossImage:OGCompatTabHighlightedImage(@"TabIconContacts_Highlighted", presentation)];
+                [_chatsButton og_compat_setSelectedGlossImage:OGCompatTabHighlightedImage(@"TabIconMessages_Highlighted", presentation)];
+                [_settingsButton og_compat_setSelectedGlossImage:OGCompatTabHighlightedImage(@"TabIconSettings_Highlighted", presentation)];
+            }
+        }
+        phaseStart = CFAbsoluteTimeGetCurrent();
+        _callsHidden = true;
+        _callsButton.hidden = true;
+        _callsButton.alpha = 0.0f;
+        _profileHidden = true;
+        _profileButton.hidden = true;
+        _profileButton.alpha = 0.0f;
+        
+        [_tabButtons addObject:_contactsButton];
+        [_tabButtons addObject:_callsButton];
+        [_tabButtons addObject:_chatsButton];
+        [_tabButtons addObject:_settingsButton];
+        [_tabButtons addObject:_profileButton];
+        _displayOrder = [TGTabBar classicDisplayOrder];
+        
+        for (TGTabBarButton *button in _tabButtons)
+        {
+            button.userInteractionEnabled = true;
+            [self addSubview:button];
+            UITapGestureRecognizer *tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
+            [button addGestureRecognizer:tapGestureRecognizer];
+        }
+        
+        UILongPressGestureRecognizer *longPressGestureRecognizer = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
+        longPressGestureRecognizer.minimumPressDuration = 0.25;
+        longPressGestureRecognizer.allowableMovement = 10.0f;
+        longPressGestureRecognizer.delegate = self;
+        [_chatsButton addGestureRecognizer:longPressGestureRecognizer];
+        if (LGPlatformUsesConstrainedBackgroundExecution())
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(startupLocalizationUpdated:) name:TGStartupLocalizationUpdatedNotification object:nil];
+    }
+    return self;
+}
+
+- (UIImage *)classicBackgroundImage
+{
+    return [TGPresentation classicIOS6ThemedImage:TGMainTabsClassicResizableImage(@"TabBarBackground") tintColor:_presentation.pallete.barBackgroundColor alpha:0.85f];
+}
+
+- (void)installClassicBackgroundViewIfNeeded
+{
+    if (_classicBackgroundView != nil)
+        return;
+
+    _classicBackgroundView = [[UIImageView alloc] initWithImage:false ? nil : [self classicBackgroundImage]];
+    [_backgroundView addSubview:_classicBackgroundView];
+}
+
+- (void)setPresentation:(TGPresentation *)presentation
+{
+    _presentation = presentation;
+
+    if (false)
+    {
+        [self installClassicBackgroundViewIfNeeded];
+        _classicBackgroundView.hidden = false;
+        _backgroundView.backgroundColor = [UIColor clearColor];
+        if (!false)
+            _callsHidden = true;
+        _callsButton.alpha = _callsHidden ? 0.0f : 1.0f;
+        _callsButton.hidden = _callsHidden;
+        _brandedBackgroundKey = nil;
+        if (false)
+        {
+            _classicBackgroundView.image = nil;
+            _stripeView.hidden = true;
+            [self setNeedsLayout];
+        }
+        else
+        {
+            _classicBackgroundView.image = [self classicBackgroundImage];
+            _stripeView.hidden = false;
+            _stripeView.backgroundColor = [TGPresentation classicIOS6UsesPaletteAdaptedAssets] ? presentation.pallete.barSeparatorColor : UIColorRGB(0xa4a8ac);
+        }
+    }
+    else
+    {
+        _classicBackgroundView.hidden = true;
+        _backgroundView.backgroundColor = presentation.pallete.barBackgroundColor;
+        _stripeView.hidden = false;
+        _stripeView.backgroundColor = presentation.pallete.barSeparatorColor;
+    }
+
+    UIImage *contactsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, false) : presentation.images.tabBarContactsIcon;
+    UIImage *callsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, false) : presentation.images.tabBarCallsIcon;
+    UIImage *chatsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, false) : presentation.images.tabBarChatsIcon;
+    UIImage *settingsImage = false ? TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, false) : presentation.images.tabBarSettingsIcon;
+
+    if (false)
+    {
+        [_contactsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsContactsIconName, presentation.images.tabBarContactsIcon, true)];
+        [_callsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsCallsIconName, presentation.images.tabBarCallsIcon, true)];
+        [_chatsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, presentation.images.tabBarChatsIcon, true)];
+        [_settingsButton og_compat_setSelectedGlossImage:TGMainTabsBrandedIOS6Icon(TGMainTabsSettingsIconName, presentation.images.tabBarSettingsIcon, true)];
+    }
+    else
+    {
+        [_contactsButton og_compat_setSelectedGlossImage:false ? OGCompatTabHighlightedImage(@"TabIconContacts_Highlighted", presentation) : nil];
+        [_callsButton og_compat_setSelectedGlossImage:nil];
+        [_chatsButton og_compat_setSelectedGlossImage:false ? OGCompatTabHighlightedImage(@"TabIconMessages_Highlighted", presentation) : nil];
+        [_settingsButton og_compat_setSelectedGlossImage:false ? OGCompatTabHighlightedImage(@"TabIconSettings_Highlighted", presentation) : nil];
+    }
+
+    [_contactsButton setImage:contactsImage presentation:presentation];
+    [_chatsButton setImage:chatsImage presentation:presentation];
+    [_settingsButton setImage:settingsImage presentation:presentation];
+    [_callsButton setImage:callsImage presentation:presentation];
+    [_profileButton setImage:presentation.images.tabBarProfileIcon presentation:presentation];
+    
+    [_messagesBadge setPresentation:presentation];
+    [_callsBadge setPresentation:presentation];
+}
+
+- (CGFloat)sideIconOffsetForWidth:(CGFloat)width
+{
+    if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPhone)
+        return 0.0f;
+    if (width < 320.0f + FLT_EPSILON)
+        return 0.0f;
+    
+    return CGFloor(width / 21.5f);
+}
+
++ (NSArray *)classicDisplayOrder
+{
+    return @[@0, @1, @2, @3, @4];
+}
+
++ (NSArray *)modernDisplayOrder
+{
+    return @[@2, @0, @1, @3, @4];
+}
+
+- (bool)isTabButtonHidden:(TGTabBarButton *)button
+{
+    if (button == _callsButton)
+        return _callsHidden;
+    if (button == _contactsButton)
+        return _contactsHidden;
+    if (button == _profileButton)
+        return _profileHidden;
+    return false;
+}
+
+- (NSArray *)orderedTabButtons
+{
+    NSMutableArray *buttons = [[NSMutableArray alloc] initWithCapacity:_tabButtons.count];
+    for (NSNumber *logicalIndex in _displayOrder)
+    {
+        NSUInteger index = [logicalIndex unsignedIntegerValue];
+        if (index < _tabButtons.count)
+            [buttons addObject:[_tabButtons objectAtIndex:index]];
+    }
+    return buttons;
+}
+
+- (NSArray *)visibleTabButtons
+{
+    NSMutableArray *buttons = [[NSMutableArray alloc] initWithCapacity:_tabButtons.count];
+    for (TGTabBarButton *button in [self orderedTabButtons])
+    {
+        if (![self isTabButtonHidden:button])
+            [buttons addObject:button];
+    }
+    return buttons;
+}
+
+- (void)setModernLayout:(bool)modernLayout animated:(bool)animated
+{
+    NSArray *displayOrder = modernLayout ? [TGTabBar modernDisplayOrder] : [TGTabBar classicDisplayOrder];
+    bool orderChanged = ![_displayOrder isEqualToArray:displayOrder];
+    bool profileChanged = _profileHidden != !modernLayout;
+    if (!orderChanged && !profileChanged)
+        return;
+    _displayOrder = displayOrder;
+    _profileHidden = !modernLayout;
+    if (profileChanged)
+        [self updateVisibilityOfTabButton:_profileButton animated:animated];
+    else
+        [self setNeedsLayout];
+}
+
+- (void)setProfileUser:(TGUser *)user
+{
+    [_profileButton setAvatarUser:user];
+}
+
+- (void)updateVisibilityOfTabButton:(TGTabBarButton *)button animated:(bool)animated
+{
+    bool hidden = [self isTabButtonHidden:button];
+    if (animated)
+    {
+        button.hidden = false;
+        if (!hidden)
+            button.alpha = 0.0f;
+        
+        [UIView animateWithDuration:0.2 animations:^
+        {
+            button.alpha = hidden ? 0.0f : 1.0f;
+        }];
+        
+        [UIView animateWithDuration:0.3 delay:0.0 options:7 << 16 | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionLayoutSubviews animations:^
+        {
+            [self layoutButtons];
+        } completion:^(__unused BOOL finished)
+        {
+            _skipNextLayout = false;
+            button.hidden = [self isTabButtonHidden:button];
+        }];
+        
+        _skipNextLayout = true;
+    }
+    else
+    {
+        button.alpha = hidden ? 0.0f : 1.0f;
+        button.hidden = hidden;
+        [self setNeedsLayout];
+    }
+}
+
+- (void)setCallsTabHidden:(bool)hidden animated:(bool)animated
+{
+    if (_callsHidden == hidden)
+        return;
+    
+    _callsHidden = hidden;
+    [self updateVisibilityOfTabButton:_callsButton animated:animated];
+}
+
+- (void)setContactsTabHidden:(bool)hidden animated:(bool)animated
+{
+    if (_contactsHidden == hidden)
+        return;
+    
+    _contactsHidden = hidden;
+    [self updateVisibilityOfTabButton:_contactsButton animated:animated];
+}
+
+- (void)setSelectedIndex:(int)selectedIndex
+{
+    _selectedIndex = selectedIndex;
+    
+    [_tabButtons enumerateObjectsUsingBlock:^(TGTabBarButton *button, NSUInteger index, __unused BOOL *stop)
+    {
+        [button setSelected:((int)index == selectedIndex)];
+    }];
+    
+    [self updateArrow];
+    [self updateBrandedBackground];
+}
+
+- (void)handleTap:(UITapGestureRecognizer *)gestureRecognizer
+{
+    if (gestureRecognizer.state != UIGestureRecognizerStateEnded)
+        return;
+    NSUInteger index = [_tabButtons indexOfObject:gestureRecognizer.view];
+    if (index == NSNotFound || index >= _tabButtons.count)
+        return;
+    TGTabBarButton *button = [_tabButtons objectAtIndex:index];
+    if (button.hidden || button.alpha < 0.01f)
+        return;
+    [self setSelectedIndex:(int)index];
+    __strong id<TGTabBarDelegate> delegate = _tabDelegate;
+    [delegate tabBarSelectedItem:(int)index];
+}
+
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gestureRecognizer
+{
+    if (gestureRecognizer.state == UIGestureRecognizerStateBegan)
+    {
+        __strong id<TGTabBarDelegate> delegate = _tabDelegate;
+        [delegate tabBarLongPressedItem:2];
+    }
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)__unused gestureRecognizer
+{
+    if (gestureRecognizer.view == self)
+        return true;
+    else
+        return _selectedIndex == 2;
+}
+
+- (void)setMissedCallsCount:(int)callsCount
+{
+    if (callsCount <= 0 && _callsBadge == nil)
+        return;
+    
+    if (_callsBadge == nil)
+    {
+        _callsBadge = [[TGTabBarBadge alloc] initWithPresentation:_presentation];
+        [_callsButton addSubview:_callsBadge];
+        
+        [self setNeedsLayout];
+    }
+    
+    _callsCount = callsCount;
+    [self updateCounts];
+}
+
+- (void)setUnreadCount:(int)unreadCount
+{
+    if (unreadCount <= 0 && _messagesBadge == nil)
+        return;
+    
+    if (_messagesBadge == nil)
+    {
+        _messagesBadge = [[TGTabBarBadge alloc] initWithPresentation:_presentation];
+        [_tabButtons[2] addSubview:_messagesBadge];
+        
+        [self setNeedsLayout];
+    }
+    
+    _messagesCount = unreadCount;
+    [self updateCounts];
+    [self updateArrow];
+}
+
+- (void)setUnreadArrowUp:(NSNumber *)arrowUp
+{
+    _unreadArrowUp = arrowUp;
+    [self updateArrow];
+}
+
+- (void)updateArrow
+{
+    if (false)
+    {
+        [_chatsButton setImage:TGMainTabsBrandedIOS6Icon(TGMainTabsChatsIconName, self.presentation.images.tabBarChatsIcon, false) presentation:self.presentation];
+        return;
+    }
+
+    if (_selectedIndex == 2 && _unreadArrowUp != nil)
+    {
+        if (_unreadArrowUp.boolValue)
+            [_chatsButton setImage:self.presentation.images.tabBarChatsUpIcon presentation:self.presentation];
+        else
+            [_chatsButton setImage:self.presentation.images.tabBarChatsDownIcon presentation:self.presentation];
+    }
+    else
+    {
+        [_chatsButton setImage:self.presentation.images.tabBarChatsIcon presentation:self.presentation];
+    }
+}
+
+- (void)updateCounts
+{
+    [_callsBadge setCount:_callsCount];
+    [_messagesBadge setCount:MAX(0, _messagesCount - _callsCount)];
+}
+
+- (void)layoutButtons
+{    
+    CGSize viewSize = self.frame.size;
+    
+    CGFloat width = viewSize.width - self.safeAreaInset.left - self.safeAreaInset.right;
+    CGFloat height = [TGTabBar tabBarHeight:_landscape];
+    
+    NSArray *visibleButtons = [self visibleTabButtons];
+    NSUInteger buttonsCount = MAX((NSUInteger)1, visibleButtons.count);
+    CGFloat buttonWidth = CGFloor(width / buttonsCount);
+    bool brandedPortrait = false && !self.landscape;
+    LGTabBarLayout *brandedLayout = brandedPortrait ? [[LGTheme brandedTheme].tabBarAppearance layoutForItemCount:buttonsCount] : nil;
+    
+    __block NSUInteger slot = 0;
+    [[self orderedTabButtons] enumerateObjectsUsingBlock:^(TGTabBarButton *button, __unused NSUInteger orderIndex, __unused BOOL *stop)
+    {
+        NSUInteger index = [_tabButtons indexOfObject:button];
+        NSUInteger buttonSlot = MIN(slot, buttonsCount - 1);
+        if (![self isTabButtonHidden:button])
+            slot++;
+        
+        CGFloat x = self.safeAreaInset.left + buttonSlot * buttonWidth;
+        CGFloat maxX = buttonSlot + 1 == buttonsCount ? self.safeAreaInset.left + width : x + buttonWidth;
+        
+        button.landscape = self.landscape;
+        button.brandedLayout = brandedLayout;
+        button.frame = CGRectMake(x, 0, maxX - x, height);
+        button.contentCenterX = CGFloor((maxX - x) / 2.0f);
+        
+        TGTabBarBadge *badge = nil;
+        if (index == 1)
+            badge = _callsBadge;
+        else if (index == 2)
+            badge = _messagesBadge;
+        
+        if (badge != nil)
+        {
+            if (self.landscape)
+            {
+                [button layoutSubviews];
+                badge.transform = CGAffineTransformMakeScale(0.8f, 0.8f);
+                badge.center = CGPointMake(button.imageView.center.x + 10.0f, 10.0f);
+            }
+            else
+            {
+                badge.transform = CGAffineTransformIdentity;
+                CGRect badgeFrame = badge.frame;
+                badgeFrame.origin.x = button.contentCenterX + 6.0f + (_callsHidden ? 0 : TGRetinaPixel);
+                badgeFrame.origin.y = 2 - button.frame.origin.y;
+                badge.frame = badgeFrame;
+            }
+        }
+    }];
+    
+    [self updateBrandedBackground];
+}
+
+- (void)updateBrandedBackground
+{
+    if (!false || _classicBackgroundView == nil)
+        return;
+    
+    CGSize viewSize = self.bounds.size;
+    if (viewSize.width < 1.0f || viewSize.height < 1.0f)
+        return;
+    
+    NSArray *visibleButtons = [self visibleTabButtons];
+    TGTabBarButton *selectedButton = _selectedIndex >= 0 && _selectedIndex < (int)_tabButtons.count ? _tabButtons[_selectedIndex] : nil;
+    NSUInteger selectedSegment = selectedButton == nil ? NSNotFound : [visibleButtons indexOfObject:selectedButton];
+    
+    NSMutableArray *segmentFrames = [[NSMutableArray alloc] initWithCapacity:visibleButtons.count];
+    NSMutableString *key = [[NSMutableString alloc] initWithFormat:@"%.1f,%.1f,%d", viewSize.width, viewSize.height, selectedSegment == NSNotFound ? -1 : (int)selectedSegment];
+    [visibleButtons enumerateObjectsUsingBlock:^(TGTabBarButton *button, NSUInteger index, __unused BOOL *stop)
+    {
+        CGFloat minX = index == 0 ? 0.0f : CGRectGetMinX(button.frame);
+        CGFloat maxX = index + 1 == visibleButtons.count ? viewSize.width : CGRectGetMaxX(button.frame);
+        [segmentFrames addObject:[NSValue valueWithCGRect:CGRectMake(minX, 0.0f, maxX - minX, viewSize.height)]];
+        [key appendFormat:@"|%.1f,%.1f", minX, maxX];
+    }];
+    
+    if ([_brandedBackgroundKey isEqualToString:key])
+        return;
+    
+    _brandedBackgroundKey = key;
+    _classicBackgroundView.image = [TGPresentation brandedIOS6TabBarBackgroundImageForSize:viewSize segmentFrames:segmentFrames selectedIndex:selectedSegment == NSNotFound ? -1 : (NSInteger)selectedSegment];
+}
+
+- (void)layoutSubviews
+{
+    [super layoutSubviews];
+    
+    CGSize viewSize = self.frame.size;
+    
+    _backgroundView.frame = CGRectMake(0, 0, viewSize.width, viewSize.height);
+    _classicBackgroundView.frame = _backgroundView.bounds;
+    CGFloat stripeHeight = TGScreenPixel;
+    CGFloat stripeOriginY = false ? 0.0f : -stripeHeight;
+    _stripeView.frame = CGRectMake(0, stripeOriginY, viewSize.width, stripeHeight);
+    
+    [self layoutButtons];
+}
+
++ (CGFloat)tabBarHeight:(bool)landscape
+{
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone)
+        return iosMajorVersion() >= 11 ? (landscape ? 32.0f : 49.0f) : 49.0f;
+    else
+        return 56.0f;
+}
+
+@end
+
+#pragma mark -
+
+@interface TGMainTabsController () <UITabBarControllerDelegate, TGTabBarDelegate>
+{
+    int _missedCallsCount;
+    int _unreadCount;
+    bool _callsHidden;
+    bool _contactsHidden;
+    bool _modernTabs;
+    TGUser *_profileUser;
+    NSTimeInterval _lastSameIndexTapTime;
+    int _tapsInSuccession;
+    
+    bool _initialized;
+    
+    CGFloat _keyboardHeight;
+    bool _ignoreKeyboardFrameChange;
+    
+    id<SDisposable> _presentationDisposable;
+    TGPresentation *_presentation;
+    bool _startupSingleControllerMode;
+    NSUInteger _startupLogicalIndex;
+    NSArray *(^_startupPrepareControllers)(void);
+}
+
+@property (nonatomic, strong) TGTabBar *customTabBar;
+
+- (void)layoutCustomTabBar;
+- (void)layoutSelectedContentUnderTabBar;
+- (void)_updateNavigationItemOverride:(NSUInteger)selectedIndex;
+
+@end
+
+@implementation TGMainTabsController
+
+- (instancetype)initWithPresentation:(TGPresentation *)presentation
+{
+    _presentation = presentation;
+    self = [super initWithNibName:nil bundle:nil];
+    if (self)
+    {
+        self.delegate = self;
+        _callsHidden = true;
+        
+        if ([self respondsToSelector:@selector(setAutomaticallyAdjustsScrollViewInsets:)])
+            [self setAutomaticallyAdjustsScrollViewInsets:false];
+        
+        self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:nil style:UIBarButtonItemStylePlain target:nil action:nil];
+        self.navigationItem.backBarButtonItem.possibleTitles = [NSSet setWithObject:(LGPlatformUsesConstrainedBackgroundExecution() ? TGStartupLocalized(@"Common.Back") : TGLocalized(@"Common.Back"))];
+    }
+    return self;
+}
+
+- (void)setStartupViewController:(UIViewController *)viewController logicalIndex:(NSUInteger)logicalIndex prepareControllers:(NSArray *(^)(void))prepareControllers
+{
+    if (viewController == nil)
+        return;
+
+    _startupSingleControllerMode = true;
+    _startupLogicalIndex = logicalIndex;
+    _startupPrepareControllers = [prepareControllers copy];
+    CFAbsoluteTime phaseStart = CFAbsoluteTimeGetCurrent();
+    [super setViewControllers:@[viewController] animated:false];
+    phaseStart = CFAbsoluteTimeGetCurrent();
+    [self _updateNavigationItemOverride:0];
+    if (_customTabBar != nil)
+        [_customTabBar setSelectedIndex:(int)logicalIndex];
+}
+
+- (bool)prepareStartupControllersForLogicalIndex:(NSUInteger)logicalIndex
+{
+    if (!_startupSingleControllerMode)
+        return true;
+    if (logicalIndex == _startupLogicalIndex)
+        return true;
+
+    NSArray *controllers = _startupPrepareControllers == nil ? nil : _startupPrepareControllers();
+    if (controllers.count <= logicalIndex || controllers.count <= _startupLogicalIndex)
+        return false;
+
+    NSUInteger startupLogicalIndex = _startupLogicalIndex;
+    _startupSingleControllerMode = false;
+    _startupPrepareControllers = nil;
+    [super setViewControllers:controllers animated:false];
+    [super setSelectedIndex:startupLogicalIndex];
+    [self _updateNavigationItemOverride:startupLogicalIndex];
+    [_customTabBar setSelectedIndex:(int)startupLogicalIndex];
+    [self layoutSelectedContentUnderTabBar];
+    return true;
+}
+
+- (NSUInteger)logicalSelectedIndex
+{
+    return _startupSingleControllerMode ? _startupLogicalIndex : [super selectedIndex];
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    
+    UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
+    if (self.view.frame.size.width > self.view.frame.size.height)
+        orientation = UIInterfaceOrientationLandscapeLeft;
+    
+    UIEdgeInsets safeAreaInset = [TGViewController safeAreaInsetForOrientation:orientation];
+    CGFloat inset = 0.0f;
+    if (iosMajorVersion() >= 11 && safeAreaInset.bottom > FLT_EPSILON)
+        inset = safeAreaInset.bottom;
+
+    bool landscape = !TGIsPad() && iosMajorVersion() >= 11 && UIInterfaceOrientationIsLandscape(orientation);
+    _customTabBar = [[TGTabBar alloc] initWithFrame:CGRectMake(0, self.view.frame.size.height - [TGTabBar tabBarHeight:landscape] - inset, self.view.frame.size.width, [TGTabBar tabBarHeight:landscape] + inset) presentation:_presentation];
+    _customTabBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    _customTabBar.safeAreaInset = safeAreaInset;
+    _customTabBar.landscape = landscape;
+    _customTabBar.tabDelegate = self;
+    [_customTabBar setCallsTabHidden:[self effectiveCallsHidden] animated:false];
+    [_customTabBar setContactsTabHidden:_contactsHidden animated:false];
+    [_customTabBar setModernLayout:_modernTabs animated:false];
+    [_customTabBar setProfileUser:_profileUser];
+    [self.view insertSubview:_customTabBar aboveSubview:self.tabBar];
+    
+    self.tabBar.hidden = true;
+}
+
+- (bool)effectiveCallsHidden
+{
+    return _callsHidden || _modernTabs;
+}
+
+- (bool)modernTabsEnabled
+{
+    return _modernTabs;
+}
+
+- (void)setModernTabsEnabled:(bool)enabled animated:(bool)animated
+{
+    if (_modernTabs == enabled)
+        return;
+    _modernTabs = enabled;
+    [_customTabBar setModernLayout:enabled animated:animated];
+    [_customTabBar setCallsTabHidden:[self effectiveCallsHidden] animated:animated];
+    NSUInteger selectedIndex = [self logicalSelectedIndex];
+    if (!enabled && selectedIndex == TGMainTabsProfileLogicalIndex)
+        [self setSelectedIndex:TGMainTabsSettingsLogicalIndex];
+    else if (enabled && selectedIndex == TGMainTabsCallsLogicalIndex)
+        [self setSelectedIndex:TGMainTabsChatsLogicalIndex];
+}
+
+- (void)setProfileUser:(TGUser *)user
+{
+    _profileUser = user;
+    [_customTabBar setProfileUser:user];
+}
+
+- (void)setPresentation:(TGPresentation *)presentation
+{
+    _presentation = presentation;
+    [_customTabBar setPresentation:presentation];
+
+    if (iosMajorVersion() < 5 && [self.navigationItem.titleView isKindOfClass:[UILabel class]] && self.navigationItem.titleView.tag == TGMainTabsClassicIOS4TitleTag)
+        TGMainTabsConfigureClassicIOS4TitleLabel((UILabel *)self.navigationItem.titleView, self.title, presentation);
+}
+
+- (void)layoutCustomTabBar
+{
+    if (_customTabBar == nil)
+        return;
+
+    UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
+    if (self.view.frame.size.width > self.view.frame.size.height)
+        orientation = UIInterfaceOrientationLandscapeLeft;
+
+    UIEdgeInsets safeAreaInset = [TGViewController safeAreaInsetForOrientation:orientation];
+    CGFloat inset = 0.0f;
+    if (iosMajorVersion() >= 11 && safeAreaInset.bottom > FLT_EPSILON)
+        inset = safeAreaInset.bottom;
+
+    bool landscape = !TGIsPad() && iosMajorVersion() >= 11 && UIInterfaceOrientationIsLandscape(orientation);
+    _customTabBar.safeAreaInset = safeAreaInset;
+    _customTabBar.landscape = landscape;
+    _customTabBar.frame = CGRectMake(0.0f, self.view.frame.size.height - [TGTabBar tabBarHeight:landscape] - inset, self.view.frame.size.width, [TGTabBar tabBarHeight:landscape] + inset);
+    [_customTabBar setNeedsLayout];
+    [_customTabBar layoutIfNeeded];
+}
+
+- (void)viewWillLayoutSubviews
+{
+    [super viewWillLayoutSubviews];
+    [self layoutCustomTabBar];
+}
+
+- (void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+    [self layoutSelectedContentUnderTabBar];
+}
+
+- (void)layoutSelectedContentUnderTabBar
+{
+    if (iosMajorVersion() >= 7 || ![self isViewLoaded])
+        return;
+
+    UIViewController *selectedViewController = self.selectedViewController;
+    if (selectedViewController == nil || ![selectedViewController isViewLoaded])
+        return;
+
+    UIView *contentView = selectedViewController.view;
+    NSMutableArray *containers = [[NSMutableArray alloc] init];
+    for (UIView *view = contentView.superview; view != nil && view != self.view; view = view.superview)
+        [containers insertObject:view atIndex:0];
+    if (containers.count == 0 || ((UIView *)containers[0]).superview != self.view)
+        return;
+
+    UIView *rootContainer = containers[0];
+    CGRect rootFrame = rootContainer.frame;
+    rootFrame.size.height = MAX(0.0f, self.view.bounds.size.height - rootFrame.origin.y);
+    if (!CGRectEqualToRect(rootContainer.frame, rootFrame))
+        rootContainer.frame = rootFrame;
+
+    for (UIView *container in containers)
+    {
+        container.clipsToBounds = false;
+        if (container != rootContainer && !CGRectEqualToRect(container.frame, container.superview.bounds))
+            container.frame = container.superview.bounds;
+    }
+    if (!CGRectEqualToRect(contentView.frame, contentView.superview.bounds))
+        contentView.frame = contentView.superview.bounds;
+}
+
+- (void)setIgnoreKeyboardFrameChange:(bool)ignoreKeyboardFrameChange restoringFocus:(bool)restoringFocus
+{
+    _ignoreKeyboardFrameChange = ignoreKeyboardFrameChange;
+    
+    if (!ignoreKeyboardFrameChange && !restoringFocus)
+    {
+        [UIView animateWithDuration:0.2 delay:0.0 options:7 << 16 animations:^
+        {
+            [self _updateForKeyboardHeight:_keyboardHeight];
+        } completion:nil];
+    }
+}
+
+- (void)controllerInsetUpdated:(UIEdgeInsets)newInset
+{
+    _keyboardHeight = newInset.bottom;
+    
+    if (_ignoreKeyboardFrameChange)
+        return;
+    
+    [self _updateForKeyboardHeight:_keyboardHeight];
+}
+
+- (void)_updateForKeyboardHeight:(CGFloat)keyboardHeight
+{
+    _customTabBar.frame = CGRectMake(0.0f, self.view.frame.size.height - [TGTabBar tabBarHeight:false] - keyboardHeight, self.view.frame.size.width, [TGTabBar tabBarHeight:false]);
+    
+    if (self.onControllerInsetUpdated != nil)
+        self.onControllerInsetUpdated(keyboardHeight);
+}
+
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation
+{
+    if (iosMajorVersion() < 6 && !TGIsPad())
+        return interfaceOrientation == UIInterfaceOrientationPortrait;
+    
+    return [TGViewController autorotationAllowed] && (interfaceOrientation != UIInterfaceOrientationPortraitUpsideDown);
+}
+
+- (BOOL)shouldAutorotate
+{
+    return [TGViewController autorotationAllowed];
+}
+
+- (UIBarStyle)requiredNavigationBarStyle
+{
+    if (self.selectedViewController == nil)
+        return UIBarStyleDefault;
+    else if ([self.selectedViewController conformsToProtocol:@protocol(TGViewControllerNavigationBarAppearance)])
+        return [(id<TGViewControllerNavigationBarAppearance>)self.selectedViewController requiredNavigationBarStyle];
+    else
+        return UIBarStyleDefault;
+}
+
+- (TGNavigationBarBackgroundVariant)navigationBarBackgroundVariant
+{
+    UIViewController *selectedViewController = self.selectedViewController;
+    if ([selectedViewController conformsToProtocol:@protocol(TGViewControllerNavigationBarAppearance)] && [selectedViewController respondsToSelector:@selector(navigationBarBackgroundVariant)])
+        return [(id<TGViewControllerNavigationBarAppearance>)selectedViewController navigationBarBackgroundVariant];
+    return TGNavigationBarBackgroundVariantDefault;
+}
+
+- (bool)navigationBarShouldBeHidden
+{
+    if (self.selectedViewController == nil)
+        return false;
+    else if ([self.selectedViewController conformsToProtocol:@protocol(TGViewControllerNavigationBarAppearance)])
+        return [(id<TGViewControllerNavigationBarAppearance>)self.selectedViewController navigationBarShouldBeHidden];
+    else
+        return false;
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [self.view layoutIfNeeded];
+    [self layoutCustomTabBar];
+    if (!_initialized)
+    {
+        _initialized = true;
+        if (_startupSingleControllerMode)
+        {
+            [self _updateNavigationItemOverride:0];
+            [_customTabBar setSelectedIndex:(int)_startupLogicalIndex];
+        }
+        else if (self.viewControllers.count > 2)
+            [self setSelectedIndex:2];
+    }
+    if (self.debugReady != nil)
+        self.debugReady();
+    [super viewWillAppear:animated];
+    [self layoutSelectedContentUnderTabBar];
+}
+
+- (BOOL)tabBarController:(UITabBarController *)__unused tabBarController shouldSelectViewController:(UIViewController *)viewController
+{
+    if (viewController == self.selectedViewController)
+        return false;
+    
+    return true;
+}
+
+- (void)tabBarLongPressedItem:(int)index
+{
+    int selectedLogicalIndex = _startupSingleControllerMode ? (int)_startupLogicalIndex : (int)self.selectedIndex;
+    if (selectedLogicalIndex == index)
+    {
+        if ([self.selectedViewController respondsToSelector:@selector(scrollToTop)])
+            [self.selectedViewController performSelector:@selector(scrollToTop)];
+    }
+}
+
+- (void)tabBarSelectedItem:(int)index
+{
+    int selectedLogicalIndex = _startupSingleControllerMode ? (int)_startupLogicalIndex : (int)self.selectedIndex;
+    if (selectedLogicalIndex != index)
+    {
+        LGRuntimeCompleteStartupPhase(@"tab");
+        if (![self prepareStartupControllersForLogicalIndex:(NSUInteger)index])
+            return;
+
+        bool constrained = LGPlatformUsesConstrainedBackgroundExecution();
+        if (constrained)
+            LGRuntimeBeginInteraction();
+        [self tabBarController:self shouldSelectViewController:[self.viewControllers objectAtIndex:index]];
+        [self setSelectedIndex:index];
+        if (constrained)
+        {
+            LGPlatformDispatchAfterCurrentMainRunLoop(^
+            {
+                LGRuntimeEndInteraction();
+            });
+        }
+    }
+    else
+    {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
+        if ([self.selectedViewController respondsToSelector:@selector(scrollToTopRequested)])
+            [self.selectedViewController performSelector:@selector(scrollToTopRequested)];
+#pragma clang diagnostic pop
+    }
+    
+    if (index == 3) {
+        NSTimeInterval t = CACurrentMediaTime();
+        if (_lastSameIndexTapTime < DBL_EPSILON || t < _lastSameIndexTapTime + 0.5) {
+            _lastSameIndexTapTime = t;
+            _tapsInSuccession++;
+            if (_tapsInSuccession == 10) {
+                _tapsInSuccession = 0;
+                _lastSameIndexTapTime = 0.0;
+                
+                [TGAppDelegateInstance.rootController pushContentController:[[TGDebugController alloc] init]];
+            }
+        } else {
+            _lastSameIndexTapTime = 0.0;
+            _tapsInSuccession = 0;
+        }
+    }
+}
+
+- (void)setSelectedIndex:(NSUInteger)selectedIndex
+{
+    if (_startupSingleControllerMode)
+    {
+        if (selectedIndex == _startupLogicalIndex)
+        {
+            [self _updateNavigationItemOverride:0];
+            [_customTabBar setSelectedIndex:(int)_startupLogicalIndex];
+            return;
+        }
+        if (![self prepareStartupControllersForLogicalIndex:selectedIndex])
+            return;
+    }
+
+    [super setSelectedIndex:selectedIndex];
+    [self _updateNavigationItemOverride:selectedIndex];
+    [_customTabBar setSelectedIndex:(int)selectedIndex];
+    [self layoutSelectedContentUnderTabBar];
+}
+
+- (void)setViewControllers:(NSArray *)viewControllers animated:(BOOL)animated
+{
+    NSUInteger logicalSelectedIndex = [self logicalSelectedIndex];
+    if (_startupSingleControllerMode && viewControllers.count > 1)
+    {
+        return;
+    }
+
+    [super setViewControllers:viewControllers animated:animated];
+
+    if (logicalSelectedIndex < viewControllers.count)
+        [super setSelectedIndex:logicalSelectedIndex];
+
+    [self _updateNavigationItemOverride:logicalSelectedIndex];
+    [_customTabBar setSelectedIndex:(int)logicalSelectedIndex];
+    [self layoutSelectedContentUnderTabBar];
+}
+
+- (void)_updateNavigationItemOverride:(NSUInteger)selectedIndex
+{
+    int index = -1;
+    for (UIViewController *viewController in self.viewControllers)
+    {
+        index++;
+        
+        if ([viewController isKindOfClass:[TGViewController class]])
+        {
+            if (index == (int)selectedIndex)
+                [(TGViewController *)viewController setTargetNavigationItem:self.navigationItem titleController:self];
+            else
+                [(TGViewController *)viewController setTargetNavigationItem:nil titleController:nil];
+        }
+    }
+
+    if ([self.navigationController isKindOfClass:[TGNavigationController class]] && self.navigationController.topViewController == self)
+        [(TGNavigationController *)self.navigationController updateNavigationBarBackgroundForController:self];
+}
+
+- (void)setTitle:(NSString *)title
+{
+    [super setTitle:title];
+
+    if (iosMajorVersion() < 5)
+    {
+        UILabel *titleLabel = nil;
+        if ([self.navigationItem.titleView isKindOfClass:[UILabel class]] && self.navigationItem.titleView.tag == TGMainTabsClassicIOS4TitleTag)
+            titleLabel = (UILabel *)self.navigationItem.titleView;
+        else if (self.navigationItem.titleView == nil)
+        {
+            titleLabel = [[UILabel alloc] init];
+            titleLabel.tag = TGMainTabsClassicIOS4TitleTag;
+            self.navigationItem.titleView = titleLabel;
+        }
+
+        if (titleLabel != nil)
+            TGMainTabsConfigureClassicIOS4TitleLabel(titleLabel, title, _presentation);
+    }
+    
+    bool constrainedStartup = LGPlatformUsesConstrainedBackgroundExecution();
+    NSString *dialogListTitle = constrainedStartup ? TGStartupLocalized(@"DialogList.Title") : TGLocalized(@"DialogList.Title");
+    NSString *backTitle = title == nil || ![title isEqualToString:dialogListTitle] ? (constrainedStartup ? TGStartupLocalized(@"Common.Back") : TGLocalized(@"Common.Back")) : title;
+    
+    if (!TGStringCompare(self.navigationItem.backBarButtonItem.title, backTitle))
+        self.navigationItem.backBarButtonItem.title = backTitle;
+}
+
+- (void)setCallsHidden:(bool)hidden animated:(bool)animated
+{
+    if (false && !false)
+        hidden = true;
+    _callsHidden = hidden;
+    [_customTabBar setCallsTabHidden:[self effectiveCallsHidden] animated:animated];
+}
+
+- (void)setContactsHidden:(bool)hidden animated:(bool)animated
+{
+    _contactsHidden = hidden;
+    [_customTabBar setContactsTabHidden:hidden animated:animated];
+    if (hidden && [self logicalSelectedIndex] == 0)
+        [self setSelectedIndex:2];
+}
+
+- (void)setMissedCallsCount:(int)callsCount
+{
+    _missedCallsCount = callsCount;
+    [_customTabBar setMissedCallsCount:callsCount];
+}
+
+- (void)setUnreadArrow:(NSNumber *)up
+{
+    [_customTabBar setUnreadArrowUp:up];
+}
+
+- (void)setUnreadCount:(int)unreadCount
+{
+    _unreadCount = unreadCount;
+    [_customTabBar setUnreadCount:_unreadCount];
+}
+
+- (void)localizationUpdated
+{
+    _customTabBar.tabDelegate = nil;
+    [_customTabBar removeFromSuperview];
+    
+    UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
+    if (self.view.frame.size.width > self.view.frame.size.height)
+        orientation = UIInterfaceOrientationLandscapeLeft;
+    
+    UIEdgeInsets safeAreaInset = [TGViewController safeAreaInsetForOrientation:orientation];
+    CGFloat inset = 0.0f;
+    if (iosMajorVersion() >= 11 && safeAreaInset.bottom > FLT_EPSILON)
+        inset = safeAreaInset.bottom;
+    
+    bool landscape = !TGIsPad() && iosMajorVersion() >= 11 && UIInterfaceOrientationIsLandscape(orientation);
+    _customTabBar = [[TGTabBar alloc] initWithFrame:CGRectMake(0, self.view.frame.size.height - [TGTabBar tabBarHeight:landscape] - inset, self.view.frame.size.width, [TGTabBar tabBarHeight:landscape] + inset) presentation:_presentation];
+    _customTabBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    _customTabBar.safeAreaInset = safeAreaInset;
+    _customTabBar.landscape = landscape;
+    _customTabBar.tabDelegate = self;
+    [self.view insertSubview:_customTabBar aboveSubview:self.tabBar];
+    
+    [_customTabBar setSelectedIndex:(int)self.selectedIndex];
+    [_customTabBar setCallsTabHidden:[self effectiveCallsHidden] animated:false];
+    [_customTabBar setContactsTabHidden:_contactsHidden animated:false];
+    [_customTabBar setModernLayout:_modernTabs animated:false];
+    [_customTabBar setProfileUser:_profileUser];
+    [_customTabBar setMissedCallsCount:_missedCallsCount];
+    [_customTabBar setUnreadCount:_unreadCount];
+    
+    for (TGViewController *controller in self.viewControllers)
+    {
+        [controller localizationUpdated];
+    }
+    
+    [_customTabBar layoutSubviews];
+}
+
+- (void)dismissViewControllerAnimated:(BOOL)flag completion:(void (^)(void))completion
+{
+    [super dismissViewControllerAnimated:flag completion:completion];
+    [self.navigationController setToolbarHidden:true animated:false];
+}
+
+- (UIStatusBarStyle)preferredStatusBarStyle
+{
+    if (!TGAppDelegateInstance.rootController.callStatusBarHidden)
+        return UIStatusBarStyleLightContent;
+    else {
+        if (iosMajorVersion() >= 7) {
+            return _presentation.pallete.isDark ? UIStatusBarStyleLightContent : UIStatusBarStyleDefault;
+        } else {
+            return UIStatusBarStyleDefault;
+        }
+    }
+}
+
+- (CGRect)frameForRightmostTab {
+    return [(TGTabBarButton *)[_customTabBar visibleTabButtons].lastObject frame];
+}
+
+- (UIView *)viewForRightmostTab {
+    return [_customTabBar visibleTabButtons].lastObject;
+}
+
+@end

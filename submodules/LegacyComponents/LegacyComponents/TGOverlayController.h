@@ -1,0 +1,14 @@
+#import "TGViewController.h"
+
+@class TGOverlayControllerWindow;
+
+@interface TGOverlayController : TGViewController
+
+@property (nonatomic, weak) TGOverlayControllerWindow *overlayWindow;
+@property (nonatomic, assign) bool isImportant;
+@property (nonatomic, copy) void (^customDismissBlock)();
+
+- (void)dismiss;
+- (void)viewWillLayoutSubviews;
+
+@end
