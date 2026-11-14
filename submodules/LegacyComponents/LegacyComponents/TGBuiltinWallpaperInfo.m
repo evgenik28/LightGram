@@ -88,7 +88,7 @@ const int32_t TGBuilitinWallpaperCurrentVersion = 1;
 {
     NSString *resourceName = [[NSString alloc] initWithFormat:@"%@builtin-wallpaper-%d", [[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad ? @"pad-" : @"", _builtinId];
     NSBundle *bundle = [NSBundle mainBundle];
-    return [bundle pathForResource:resourceName ofType:@"jpg"] ?: [bundle pathForResource:resourceName ofType:@"jpg" inDirectory:@"ClassicIOS6"];
+    return [bundle pathForResource:resourceName ofType:@"jpg"];
 }
 
 - (UIImage *)image

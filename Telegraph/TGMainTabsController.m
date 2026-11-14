@@ -26,21 +26,6 @@ static NSString *const TGMainTabsCallsIconName = @"tabbar-calls";
 static NSString *const TGMainTabsChatsIconName = @"tabbar-chats";
 static NSString *const TGMainTabsSettingsIconName = @"tabbar-settings";
 
-static UIImage *TGMainTabsBrandedIOS6Icon(NSString *name, UIImage *fallbackTemplate, bool selected)
-{
-    LGTheme *theme = [LGTheme brandedTheme];
-    UIImage *iconTemplate = [theme.assets imageNamed:name inDirectory:@"ios6style"];
-    if (iconTemplate == nil)
-        iconTemplate = fallbackTemplate;
-    if (iconTemplate == nil)
-        return nil;
-
-    LGTabBarAppearance *appearance = theme.tabBarAppearance;
-    NSArray *colors = selected ? appearance.selectedIconGradientColors : appearance.iconGradientColors;
-    NSArray *locations = selected ? appearance.selectedIconGradientLocations : appearance.iconGradientLocations;
-    NSArray *shadows = selected ? appearance.selectedIconShadows : appearance.iconShadows;
-    return [theme.surfaceRenderer iconImageWithTemplate:iconTemplate gradientColors:colors locations:locations shadows:shadows outsets:[appearance iconOutsets]];
-}
 
 static void TGMainTabsApplyTabLabelStyle(UILabel *label, TGPresentation *presentation)
 {
@@ -94,16 +79,7 @@ static UIImage *TGMainTabsClassicResizableImage(NSString *name)
     return TGMainTabsClassicIOS6ResizableImageWithHorizontalCap(name, 1.0f);
 }
 
-static UIColor *TGMainTabsClassicSelectedColor(TGPresentation *presentation)
-{
-    
-    return presentation.pallete.tabActiveIconColor;
-}
 
-static UIImage *OGCompatTabHighlightedImage(NSString *name, TGPresentation *presentation)
-{
-    return [TGPresentation classicIOS6ThemedImage:OGCompatTabBundleImage(name) tintColor:TGMainTabsClassicSelectedColor(presentation) alpha:0.6f];
-}
 
 static NSInteger const TGMainTabsClassicIOS4TitleTag = 0x49365454;
 

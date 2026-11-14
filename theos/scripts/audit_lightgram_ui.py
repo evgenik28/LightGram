@@ -18,23 +18,18 @@ def scan(directory, rules):
                 errors.append(f"{path.relative_to(root)}:{line}: {name}")
 
 scan(root / 'LightGramPlatform', [
-    (re.compile(r'LightGramUI|LightGramUIBridge|Telegraph|LegacyComponents'), 'higher-layer dependency'),
+    (re.compile(r'LightGramUI|Telegraph|LegacyComponents'), 'higher-layer dependency'),
     (re.compile(r'\bTG[A-Z][A-Za-z0-9_]*\b'), 'Telegram dependency'),
 ])
 
 scan(root / 'LightGramUI', [
-    (re.compile(r'LightGramUIBridge|Telegraph|LegacyComponents|SSignalKit|MtProtoKit'), 'application dependency'),
+    (re.compile(r'Telegraph|LegacyComponents|SSignalKit|MtProtoKit'), 'application dependency'),
     (re.compile(r'\bTG[A-Z][A-Za-z0-9_]*\b'), 'Telegram dependency'),
     (re.compile(r'\bAVPlayer\b|\bAVCapture[A-Za-z0-9_]*\b'), 'AVFoundation backend'),
     (re.compile(r'\bCI(?:Image|Context|Color|Filter)\b'), 'Core Image backend'),
     (re.compile(r'\bNSLayoutConstraint\b'), 'Auto Layout'),
     (re.compile(r'\bUICollectionView\b'), 'UICollectionView'),
     (re.compile(r'\bUITextPosition\b|\bUITextRange\b'), 'modern text input API'),
-])
-
-scan(root / 'LightGramUIBridge', [
-    (re.compile(r'#import\s+[<"][^\n">]*(?:Base|Chat|Chrome|Common|Info|Lists|Profile|Screens)/'), 'visual UI dependency'),
-    (re.compile(r'<UIKit/UIKit.h>'), 'UIKit dependency'),
 ])
 
 if errors:

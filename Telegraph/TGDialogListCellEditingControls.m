@@ -140,33 +140,6 @@ static UIColor *buttonColorForType(TGDialogListCellEditingControlButton button, 
 }
 
 
-static UIImage *TGDialogListEditingBrandedIcon(NSString *name)
-{
-    UIImage *source = [TGPresentation brandedIOS6ResourceImage:name];
-    if (source == nil)
-        return nil;
-
-    CGSize size = source.size;
-    UIGraphicsBeginImageContextWithOptions(size, false, source.scale);
-    CGContextRef context = UIGraphicsGetCurrentContext();
-    CGRect rect = CGRectMake(0.0f, 0.0f, size.width, size.height);
-
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGFloat components[] = {
-        1.0f, 1.0f, 1.0f, 1.0f,
-        0.639f, 0.639f, 0.639f, 1.0f
-    };
-    CGFloat locations[] = {0.0f, 1.0f};
-    CGGradientRef gradient = CGGradientCreateWithColorComponents(colorSpace, components, locations, 2);
-    CGContextDrawLinearGradient(context, gradient, CGPointMake(0.0f, 0.0f), CGPointMake(0.0f, size.height), 0);
-    CGGradientRelease(gradient);
-    CGColorSpaceRelease(colorSpace);
-    [source drawInRect:rect blendMode:kCGBlendModeDestinationIn alpha:1.0f];
-
-    UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return result;
-}
 
 static UIImage *TGDialogListEditingMessageIcon(TGDialogListCellEditingControlButton button, UIColor *color)
 {

@@ -128,7 +128,7 @@ $(GENERATED_DIR)/dependencies.mk: Makefile $(GRAPH_INPUTS) scripts/generate.py s
 $(GENERATED_DIR)/%.mk: $(GENERATED_DIR)/dependencies.mk
 	@test -f "$@" || python3 scripts/generate.py --configuration "$(XCODE_CONFIGURATION)"
 include $(GENERATED_DIR)/dependencies.mk
-XCODE_LIBRARIES += libLightGramRuntime libLightGramPlatform libLightGramUI libLightGramUIBridge
+XCODE_LIBRARIES += libLightGramRuntime libLightGramPlatform libLightGramUI
 ifeq ($(LIGHTGRAM_PLUGINS),1)
 XCODE_LIBRARIES += libLightGramPlugins
 endif
@@ -138,8 +138,6 @@ else ifeq ($(XCODE_TARGET),libLightGramPlatform)
 include LightGramPlatform.mk
 else ifeq ($(XCODE_TARGET),libLightGramUI)
 include LightGramUI.mk
-else ifeq ($(XCODE_TARGET),libLightGramUIBridge)
-include LightGramUIBridge.mk
 else ifeq ($(XCODE_TARGET),libLightGramPlugins)
 include LightGramPlugins.mk
 else
@@ -155,15 +153,15 @@ Telegram_LDFLAGS := $(subst -framework WebP,$(GENERATED_DIR)/products/libWebP.a,
 Telegram_LINK_INPUTS := $(filter-out $(LIGHTGRAM_ROOT)/thirdparty/WebP.framework/WebP,$(Telegram_LINK_INPUTS))
 Telegram_LINK_INPUTS += $(GENERATED_DIR)/products/libWebP.a
 endif
-Telegram_CFLAGS += -I$(LIGHTGRAM_ROOT)/LightGramRuntime -I$(LIGHTGRAM_ROOT)/LightGramPlatform -I$(LIGHTGRAM_ROOT)/LightGramUI -I$(LIGHTGRAM_ROOT)/LightGramUIBridge
+Telegram_CFLAGS += -I$(LIGHTGRAM_ROOT)/LightGramRuntime -I$(LIGHTGRAM_ROOT)/LightGramPlatform -I$(LIGHTGRAM_ROOT)/LightGramUI
 Telegram_CFLAGS += -I$(LIGHTGRAM_ROOT)/theos/$(GENERATED_DIR)/libvpx/include
 ifeq ($(LIGHTGRAM_ARCH),arm64)
 Telegram_CFLAGS := -I$(LIGHTGRAM_ROOT)/theos/$(GENERATED_DIR)/dependency-sources/openssl-OpenSSL_1_0_2h/include $(Telegram_CFLAGS)
 else
 Telegram_CFLAGS := -I$(LIGHTGRAM_ROOT)/thirdparty/TgVoipWebrtcIOS6/openssl-ios5/include $(Telegram_CFLAGS)
 endif
-Telegram_LDFLAGS += $(GENERATED_DIR)/products/libLightGramUIBridge.a $(GENERATED_DIR)/products/libLightGramUI.a $(GENERATED_DIR)/products/libLightGramPlatform.a $(GENERATED_DIR)/products/libLightGramRuntime.a
-Telegram_LINK_INPUTS += $(GENERATED_DIR)/products/libLightGramUIBridge.a $(GENERATED_DIR)/products/libLightGramUI.a $(GENERATED_DIR)/products/libLightGramPlatform.a $(GENERATED_DIR)/products/libLightGramRuntime.a
+Telegram_LDFLAGS += $(GENERATED_DIR)/products/libLightGramUI.a $(GENERATED_DIR)/products/libLightGramPlatform.a $(GENERATED_DIR)/products/libLightGramRuntime.a
+Telegram_LINK_INPUTS += $(GENERATED_DIR)/products/libLightGramUI.a $(GENERATED_DIR)/products/libLightGramPlatform.a $(GENERATED_DIR)/products/libLightGramRuntime.a
 Telegram_LDFLAGS += -Wl,-dead_strip
 ifeq ($(LIGHTGRAM_PLUGINS),1)
 Telegram_LDFLAGS += $(GENERATED_DIR)/products/libLightGramPlugins.a $(GENERATED_DIR)/products/libpython3.11.a $(GENERATED_DIR)/products/libwebpdemux.a -lz -lbz2

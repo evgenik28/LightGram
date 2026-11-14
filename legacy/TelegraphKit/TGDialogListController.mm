@@ -385,12 +385,6 @@ static bool TGDialogListPreviewMessageUnread(TGConversation *conversation)
     return mid > conversation.maxReadMessageId;
 }
 
-static UIBarButtonItem *TGDialogListBrandedBarButtonItem(NSString *title, id target, SEL action, bool leading)
-{
-    LGDialogListAppearance *appearance = [TGPresentation brandedIOS6DialogListAppearance];
-    CGFloat horizontalInset = appearance.navigationButtonHorizontalInset;
-    return [TGPresentation brandedIOS6BarButtonItemWithTitle:title target:target action:action offset:UIOffsetMake(leading ? horizontalInset : -horizontalInset, appearance.navigationButtonVerticalOffset)];
-}
 
 static CGFloat TGDialogListBrandedFolderButtonWidth(LGDialogListAppearance *appearance, NSString *title)
 {
@@ -469,21 +463,6 @@ static NSString *const OGCompatArchiveHeaderItem = @"OGCompatArchiveHeaderItem";
 static NSString *const OGCompatNewChatListGesturesKey = @"TGIOS6NewChatListGestures";
 static NSString *const OGCompatNewChatListGesturesChangedNotification = @"TGIOS6NewChatListGesturesChanged";
 
-static UIImage *OGCompatCenteredScaledBarIcon(UIImage *image, CGFloat scale)
-{
-    if (image == nil)
-        return nil;
-
-    CGSize full = image.size;
-    CGSize shrunk = CGSizeMake(floorf(full.width * scale), floorf(full.height * scale));
-    CGPoint origin = CGPointMake(floorf((full.width - shrunk.width) / 2.0f), floorf((full.height - shrunk.height) / 2.0f));
-
-    UIGraphicsBeginImageContextWithOptions(full, false, image.scale);
-    [image drawInRect:(CGRect){origin, shrunk}];
-    UIImage *composed = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return composed;
-}
 
 #pragma mark -
 
