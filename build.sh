@@ -1735,8 +1735,8 @@ Name: LightGram
 Version: $CURRENT_VERSION-$CURRENT_BUILD
 Architecture: $debarch
 Description: Telegram client for iOS 3 and newer
-Maintainer: notdevv
-Author: notdevv
+Maintainer: nothack4d
+Author: nothack4d
 Section: Networking
 Depends: firmware (>= $firmware), uikittools
 CTL
