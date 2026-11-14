@@ -30,7 +30,65 @@
 
 @end
 
-extern NSString *OGCompatDocumentDisplayName(TGDocumentMediaAttachment *document);
+static NSString *OGCompatDocumentDisplayName(TGDocumentMediaAttachment *document)
+{
+    NSString *name = document.fileName.length != 0 ? document.fileName : @"file";
+    if ([name pathExtension].length != 0)
+        return name;
+    
+    NSString *mime = [document.mimeType lowercaseString];
+    bool large = document.size > 1024 * 1024;
+    NSString *suffix = nil;
+    
+    if ([@[@"application/zip", @"application/x-zip-compressed"] containsObject:mime])
+        suffix = large ? @"ipa" : @"zip";
+    else
+    {
+        static NSDictionary *suffixByMime = nil;
+        static dispatch_once_t suffixToken;
+        dispatch_once(&suffixToken, ^
+        {
+            NSDictionary *mimesBySuffix = @{
+                @"pdf": @[@"application/pdf"],
+                @"rar": @[@"application/x-rar-compressed"],
+                @"7z": @[@"application/x-7z-compressed"],
+                @"gz": @[@"application/gzip"],
+                @"tar": @[@"application/x-tar"],
+                @"apk": @[@"application/vnd.android.package-archive"],
+                @"deb": @[@"application/x-debian-package"],
+                @"ipa": @[@"application/x-itunes-ipa"],
+                @"txt": @[@"text/plain"],
+                @"html": @[@"text/html"],
+                @"css": @[@"text/css"],
+                @"js": @[@"text/javascript", @"application/javascript"],
+                @"json": @[@"application/json"],
+                @"xml": @[@"application/xml", @"text/xml"],
+                @"jpg": @[@"image/jpeg"],
+                @"png": @[@"image/png"],
+                @"gif": @[@"image/gif"],
+                @"webp": @[@"image/webp"],
+                @"mp3": @[@"audio/mpeg"],
+                @"m4a": @[@"audio/mp4"],
+                @"ogg": @[@"audio/ogg"],
+                @"mp4": @[@"video/mp4"],
+                @"mov": @[@"video/quicktime"]
+            };
+            NSMutableDictionary *inverse = [[NSMutableDictionary alloc] init];
+            [mimesBySuffix enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSArray *mimes, __unused BOOL *stop)
+            {
+                for (NSString *item in mimes)
+                    inverse[item] = key;
+            }];
+            suffixByMime = inverse;
+        });
+        
+        suffix = suffixByMime[mime];
+        if (suffix.length == 0 && large && (mime.length == 0 || [mime isEqualToString:@"application/octet-stream"]))
+            suffix = @"ipa";
+    }
+    
+    return suffix.length != 0 ? [name stringByAppendingPathExtension:suffix] : name;
+}
 
 @implementation TGDocumentWebpageFooterModel
 

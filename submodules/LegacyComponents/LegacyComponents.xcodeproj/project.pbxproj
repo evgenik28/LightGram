@@ -498,8 +498,6 @@
 		D026605F1F34A7F8000E2DC5 /* TGLocationPickerController.m in Sources */ = {isa = PBXBuildFile; fileRef = D026603D1F34A7F8000E2DC5 /* TGLocationPickerController.m */; };
 		D02660601F34A7F8000E2DC5 /* TGLocationPinAnnotationView.h in Headers */ = {isa = PBXBuildFile; fileRef = D026603E1F34A7F8000E2DC5 /* TGLocationPinAnnotationView.h */; };
 		D02660611F34A7F8000E2DC5 /* TGLocationPinAnnotationView.m in Sources */ = {isa = PBXBuildFile; fileRef = D026603F1F34A7F8000E2DC5 /* TGLocationPinAnnotationView.m */; };
-		D02660621F34A7F8000E2DC5 /* TGLocationPinView.h in Headers */ = {isa = PBXBuildFile; fileRef = D02660401F34A7F8000E2DC5 /* TGLocationPinView.h */; };
-		D02660631F34A7F8000E2DC5 /* TGLocationPinView.m in Sources */ = {isa = PBXBuildFile; fileRef = D02660411F34A7F8000E2DC5 /* TGLocationPinView.m */; };
 		D02660641F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.h in Headers */ = {isa = PBXBuildFile; fileRef = D02660421F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.h */; };
 		D02660651F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.m in Sources */ = {isa = PBXBuildFile; fileRef = D02660431F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.m */; };
 		D02660661F34A7F8000E2DC5 /* TGLocationSectionHeaderCell.h in Headers */ = {isa = PBXBuildFile; fileRef = D02660441F34A7F8000E2DC5 /* TGLocationSectionHeaderCell.h */; };
@@ -602,8 +600,6 @@
 		D07BC76B1F2A2B3700ED97AA /* TGPhotoEditorBlurToolView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC7451F2A2B3700ED97AA /* TGPhotoEditorBlurToolView.m */; };
 		D07BC76C1F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC7461F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.h */; };
 		D07BC76D1F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC7471F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.m */; };
-		D07BC76E1F2A2B3700ED97AA /* TGPhotoEditorBlurView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC7481F2A2B3700ED97AA /* TGPhotoEditorBlurView.h */; };
-		D07BC76F1F2A2B3700ED97AA /* TGPhotoEditorBlurView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC7491F2A2B3700ED97AA /* TGPhotoEditorBlurView.m */; };
 		D07BC7701F2A2B3700ED97AA /* TGPhotoEditorCollectionView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC74A1F2A2B3700ED97AA /* TGPhotoEditorCollectionView.h */; };
 		D07BC7711F2A2B3700ED97AA /* TGPhotoEditorCollectionView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC74B1F2A2B3700ED97AA /* TGPhotoEditorCollectionView.m */; };
 		D07BC7721F2A2B3700ED97AA /* TGPhotoEditorCurvesHistogramView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC74C1F2A2B3700ED97AA /* TGPhotoEditorCurvesHistogramView.h */; };
@@ -689,8 +685,6 @@
 		D07BC8111F2A2C0B00ED97AA /* PGPhotoFilter.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC7DB1F2A2C0B00ED97AA /* PGPhotoFilter.m */; };
 		D07BC8121F2A2C0B00ED97AA /* PGPhotoFilterDefinition.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC7DC1F2A2C0B00ED97AA /* PGPhotoFilterDefinition.h */; };
 		D07BC8131F2A2C0B00ED97AA /* PGPhotoFilterDefinition.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC7DD1F2A2C0B00ED97AA /* PGPhotoFilterDefinition.m */; };
-		D07BC8141F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC7DE1F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.h */; };
-		D07BC8151F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC7DF1F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.m */; };
 		D07BC8161F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC7E01F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.h */; };
 		D07BC8171F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC7E11F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.m */; };
 		D07BC8181F2A2C0B00ED97AA /* PGPhotoHistogram.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC7E21F2A2C0B00ED97AA /* PGPhotoHistogram.h */; };
@@ -717,8 +711,6 @@
 		D07BC8361F2A2D0C00ED97AA /* TGSecretTimerMenu.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC82E1F2A2D0C00ED97AA /* TGSecretTimerMenu.m */; };
 		D07BC8371F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC82F1F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.h */; };
 		D07BC8381F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8301F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.m */; };
-		D07BC8391F2A2D0C00ED97AA /* TGSecretTimerValueController.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8311F2A2D0C00ED97AA /* TGSecretTimerValueController.h */; };
-		D07BC83A1F2A2D0C00ED97AA /* TGSecretTimerValueController.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8321F2A2D0C00ED97AA /* TGSecretTimerValueController.m */; };
 		D07BC83B1F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8331F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		D07BC83C1F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8341F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.m */; };
 		D07BC8411F2A2D7900ED97AA /* TGPhotoCaptionController.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC83D1F2A2D7900ED97AA /* TGPhotoCaptionController.h */; };
@@ -781,8 +773,6 @@
 		D07BC8C61F2A37EC00ED97AA /* TGPhotoPaintEntityView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8B01F2A37EC00ED97AA /* TGPhotoPaintEntityView.m */; };
 		D07BC8C71F2A37EC00ED97AA /* TGPhotoPaintFont.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8B11F2A37EC00ED97AA /* TGPhotoPaintFont.h */; };
 		D07BC8C81F2A37EC00ED97AA /* TGPhotoPaintFont.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8B21F2A37EC00ED97AA /* TGPhotoPaintFont.m */; };
-		D07BC8C91F2A37EC00ED97AA /* TGPhotoPaintScrollView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8B31F2A37EC00ED97AA /* TGPhotoPaintScrollView.h */; };
-		D07BC8CA1F2A37EC00ED97AA /* TGPhotoPaintScrollView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8B41F2A37EC00ED97AA /* TGPhotoPaintScrollView.m */; };
 		D07BC8CB1F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8B51F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.h */; };
 		D07BC8CC1F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8B61F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.m */; };
 		D07BC8CD1F2A37EC00ED97AA /* TGPhotoPaintSettingsView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8B71F2A37EC00ED97AA /* TGPhotoPaintSettingsView.h */; };
@@ -803,8 +793,6 @@
 		D07BC9061F2A380D00ED97AA /* TGPaintCanvas.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8DC1F2A380D00ED97AA /* TGPaintCanvas.m */; };
 		D07BC9071F2A380D00ED97AA /* TGPaintEllipticalBrush.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8DD1F2A380D00ED97AA /* TGPaintEllipticalBrush.h */; };
 		D07BC9081F2A380D00ED97AA /* TGPaintEllipticalBrush.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8DE1F2A380D00ED97AA /* TGPaintEllipticalBrush.m */; };
-		D07BC9091F2A380D00ED97AA /* TGPaintFaceDebugView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8DF1F2A380D00ED97AA /* TGPaintFaceDebugView.h */; };
-		D07BC90A1F2A380D00ED97AA /* TGPaintFaceDebugView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8E01F2A380D00ED97AA /* TGPaintFaceDebugView.m */; };
 		D07BC90B1F2A380D00ED97AA /* TGPaintFaceDetector.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8E11F2A380D00ED97AA /* TGPaintFaceDetector.h */; };
 		D07BC90C1F2A380D00ED97AA /* TGPaintFaceDetector.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BC8E21F2A380D00ED97AA /* TGPaintFaceDetector.m */; };
 		D07BC90D1F2A380D00ED97AA /* TGPainting.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BC8E31F2A380D00ED97AA /* TGPainting.h */; };
@@ -1026,8 +1014,6 @@
 		D07BCABC1F2B4E2600ED97AA /* TGTransitionLayout.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BCABA1F2B4E2600ED97AA /* TGTransitionLayout.m */; };
 		D07BCABF1F2B4E3900ED97AA /* UICollectionView+TGTransitioning.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BCABD1F2B4E3900ED97AA /* UICollectionView+TGTransitioning.h */; };
 		D07BCAC01F2B4E3900ED97AA /* UICollectionView+TGTransitioning.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BCABE1F2B4E3900ED97AA /* UICollectionView+TGTransitioning.m */; };
-		D07BCAC61F2B4E6200ED97AA /* TGAttachmentCameraCell.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BCAC11F2B4E6200ED97AA /* TGAttachmentCameraCell.h */; };
-		D07BCAC71F2B4E6200ED97AA /* TGAttachmentCameraCell.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BCAC21F2B4E6200ED97AA /* TGAttachmentCameraCell.m */; };
 		D07BCAC81F2B4E6200ED97AA /* TGAttachmentCameraView.h in Headers */ = {isa = PBXBuildFile; fileRef = D07BCAC31F2B4E6200ED97AA /* TGAttachmentCameraView.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		D07BCAC91F2B4E6200ED97AA /* TGAttachmentCameraView.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BCAC41F2B4E6200ED97AA /* TGAttachmentCameraView.m */; };
 		D07BCACA1F2B4E6200ED97AA /* TGMediaAvatarMenuMixin.m in Sources */ = {isa = PBXBuildFile; fileRef = D07BCAC51F2B4E6200ED97AA /* TGMediaAvatarMenuMixin.m */; };
@@ -1692,8 +1678,6 @@
 		D026603D1F34A7F8000E2DC5 /* TGLocationPickerController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGLocationPickerController.m; sourceTree = "<group>"; };
 		D026603E1F34A7F8000E2DC5 /* TGLocationPinAnnotationView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGLocationPinAnnotationView.h; sourceTree = "<group>"; };
 		D026603F1F34A7F8000E2DC5 /* TGLocationPinAnnotationView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGLocationPinAnnotationView.m; sourceTree = "<group>"; };
-		D02660401F34A7F8000E2DC5 /* TGLocationPinView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGLocationPinView.h; sourceTree = "<group>"; };
-		D02660411F34A7F8000E2DC5 /* TGLocationPinView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGLocationPinView.m; sourceTree = "<group>"; };
 		D02660421F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGLocationReverseGeocodeResult.h; sourceTree = "<group>"; };
 		D02660431F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGLocationReverseGeocodeResult.m; sourceTree = "<group>"; };
 		D02660441F34A7F8000E2DC5 /* TGLocationSectionHeaderCell.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGLocationSectionHeaderCell.h; sourceTree = "<group>"; };
@@ -1796,8 +1780,6 @@
 		D07BC7451F2A2B3700ED97AA /* TGPhotoEditorBlurToolView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoEditorBlurToolView.m; sourceTree = "<group>"; };
 		D07BC7461F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoEditorBlurTypeButton.h; sourceTree = "<group>"; };
 		D07BC7471F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoEditorBlurTypeButton.m; sourceTree = "<group>"; };
-		D07BC7481F2A2B3700ED97AA /* TGPhotoEditorBlurView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoEditorBlurView.h; sourceTree = "<group>"; };
-		D07BC7491F2A2B3700ED97AA /* TGPhotoEditorBlurView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoEditorBlurView.m; sourceTree = "<group>"; };
 		D07BC74A1F2A2B3700ED97AA /* TGPhotoEditorCollectionView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoEditorCollectionView.h; sourceTree = "<group>"; };
 		D07BC74B1F2A2B3700ED97AA /* TGPhotoEditorCollectionView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoEditorCollectionView.m; sourceTree = "<group>"; };
 		D07BC74C1F2A2B3700ED97AA /* TGPhotoEditorCurvesHistogramView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoEditorCurvesHistogramView.h; sourceTree = "<group>"; };
@@ -1883,8 +1865,6 @@
 		D07BC7DB1F2A2C0B00ED97AA /* PGPhotoFilter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PGPhotoFilter.m; sourceTree = "<group>"; };
 		D07BC7DC1F2A2C0B00ED97AA /* PGPhotoFilterDefinition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PGPhotoFilterDefinition.h; sourceTree = "<group>"; };
 		D07BC7DD1F2A2C0B00ED97AA /* PGPhotoFilterDefinition.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PGPhotoFilterDefinition.m; sourceTree = "<group>"; };
-		D07BC7DE1F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PGPhotoFilterThumbnailManager.h; sourceTree = "<group>"; };
-		D07BC7DF1F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PGPhotoFilterThumbnailManager.m; sourceTree = "<group>"; };
 		D07BC7E01F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PGPhotoGaussianBlurFilter.h; sourceTree = "<group>"; };
 		D07BC7E11F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PGPhotoGaussianBlurFilter.m; sourceTree = "<group>"; };
 		D07BC7E21F2A2C0B00ED97AA /* PGPhotoHistogram.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PGPhotoHistogram.h; sourceTree = "<group>"; };
@@ -1911,8 +1891,6 @@
 		D07BC82E1F2A2D0C00ED97AA /* TGSecretTimerMenu.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGSecretTimerMenu.m; sourceTree = "<group>"; };
 		D07BC82F1F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGSecretTimerPickerItemView.h; sourceTree = "<group>"; };
 		D07BC8301F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGSecretTimerPickerItemView.m; sourceTree = "<group>"; };
-		D07BC8311F2A2D0C00ED97AA /* TGSecretTimerValueController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGSecretTimerValueController.h; sourceTree = "<group>"; };
-		D07BC8321F2A2D0C00ED97AA /* TGSecretTimerValueController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGSecretTimerValueController.m; sourceTree = "<group>"; };
 		D07BC8331F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGSecretTimerValueControllerItemView.h; sourceTree = "<group>"; };
 		D07BC8341F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGSecretTimerValueControllerItemView.m; sourceTree = "<group>"; };
 		D07BC83D1F2A2D7900ED97AA /* TGPhotoCaptionController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoCaptionController.h; sourceTree = "<group>"; };
@@ -1975,8 +1953,6 @@
 		D07BC8B01F2A37EC00ED97AA /* TGPhotoPaintEntityView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoPaintEntityView.m; sourceTree = "<group>"; };
 		D07BC8B11F2A37EC00ED97AA /* TGPhotoPaintFont.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoPaintFont.h; sourceTree = "<group>"; };
 		D07BC8B21F2A37EC00ED97AA /* TGPhotoPaintFont.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoPaintFont.m; sourceTree = "<group>"; };
-		D07BC8B31F2A37EC00ED97AA /* TGPhotoPaintScrollView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoPaintScrollView.h; sourceTree = "<group>"; };
-		D07BC8B41F2A37EC00ED97AA /* TGPhotoPaintScrollView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoPaintScrollView.m; sourceTree = "<group>"; };
 		D07BC8B51F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoPaintSelectionContainerView.h; sourceTree = "<group>"; };
 		D07BC8B61F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPhotoPaintSelectionContainerView.m; sourceTree = "<group>"; };
 		D07BC8B71F2A37EC00ED97AA /* TGPhotoPaintSettingsView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPhotoPaintSettingsView.h; sourceTree = "<group>"; };
@@ -1997,8 +1973,6 @@
 		D07BC8DC1F2A380D00ED97AA /* TGPaintCanvas.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPaintCanvas.m; sourceTree = "<group>"; };
 		D07BC8DD1F2A380D00ED97AA /* TGPaintEllipticalBrush.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPaintEllipticalBrush.h; sourceTree = "<group>"; };
 		D07BC8DE1F2A380D00ED97AA /* TGPaintEllipticalBrush.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPaintEllipticalBrush.m; sourceTree = "<group>"; };
-		D07BC8DF1F2A380D00ED97AA /* TGPaintFaceDebugView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPaintFaceDebugView.h; sourceTree = "<group>"; };
-		D07BC8E01F2A380D00ED97AA /* TGPaintFaceDebugView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPaintFaceDebugView.m; sourceTree = "<group>"; };
 		D07BC8E11F2A380D00ED97AA /* TGPaintFaceDetector.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPaintFaceDetector.h; sourceTree = "<group>"; };
 		D07BC8E21F2A380D00ED97AA /* TGPaintFaceDetector.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGPaintFaceDetector.m; sourceTree = "<group>"; };
 		D07BC8E31F2A380D00ED97AA /* TGPainting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGPainting.h; sourceTree = "<group>"; };
@@ -2220,8 +2194,6 @@
 		D07BCABA1F2B4E2600ED97AA /* TGTransitionLayout.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGTransitionLayout.m; sourceTree = "<group>"; };
 		D07BCABD1F2B4E3900ED97AA /* UICollectionView+TGTransitioning.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UICollectionView+TGTransitioning.h"; sourceTree = "<group>"; };
 		D07BCABE1F2B4E3900ED97AA /* UICollectionView+TGTransitioning.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UICollectionView+TGTransitioning.m"; sourceTree = "<group>"; };
-		D07BCAC11F2B4E6200ED97AA /* TGAttachmentCameraCell.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGAttachmentCameraCell.h; sourceTree = "<group>"; };
-		D07BCAC21F2B4E6200ED97AA /* TGAttachmentCameraCell.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGAttachmentCameraCell.m; sourceTree = "<group>"; };
 		D07BCAC31F2B4E6200ED97AA /* TGAttachmentCameraView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGAttachmentCameraView.h; sourceTree = "<group>"; };
 		D07BCAC41F2B4E6200ED97AA /* TGAttachmentCameraView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGAttachmentCameraView.m; sourceTree = "<group>"; };
 		D07BCAC51F2B4E6200ED97AA /* TGMediaAvatarMenuMixin.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TGMediaAvatarMenuMixin.m; sourceTree = "<group>"; };
@@ -2926,8 +2898,6 @@
 				D07BC8B01F2A37EC00ED97AA /* TGPhotoPaintEntityView.m */,
 				D07BC8B11F2A37EC00ED97AA /* TGPhotoPaintFont.h */,
 				D07BC8B21F2A37EC00ED97AA /* TGPhotoPaintFont.m */,
-				D07BC8B31F2A37EC00ED97AA /* TGPhotoPaintScrollView.h */,
-				D07BC8B41F2A37EC00ED97AA /* TGPhotoPaintScrollView.m */,
 				D07BC8B51F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.h */,
 				D07BC8B61F2A37EC00ED97AA /* TGPhotoPaintSelectionContainerView.m */,
 				D07BC8B71F2A37EC00ED97AA /* TGPhotoPaintSettingsView.h */,
@@ -2948,8 +2918,6 @@
 				D07BC8DC1F2A380D00ED97AA /* TGPaintCanvas.m */,
 				D07BC8DD1F2A380D00ED97AA /* TGPaintEllipticalBrush.h */,
 				D07BC8DE1F2A380D00ED97AA /* TGPaintEllipticalBrush.m */,
-				D07BC8DF1F2A380D00ED97AA /* TGPaintFaceDebugView.h */,
-				D07BC8E01F2A380D00ED97AA /* TGPaintFaceDebugView.m */,
 				D07BC8E11F2A380D00ED97AA /* TGPaintFaceDetector.h */,
 				D07BC8E21F2A380D00ED97AA /* TGPaintFaceDetector.m */,
 				D07BC8E31F2A380D00ED97AA /* TGPainting.h */,
@@ -3116,8 +3084,6 @@
 				D07BC7451F2A2B3700ED97AA /* TGPhotoEditorBlurToolView.m */,
 				D07BC7461F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.h */,
 				D07BC7471F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.m */,
-				D07BC7481F2A2B3700ED97AA /* TGPhotoEditorBlurView.h */,
-				D07BC7491F2A2B3700ED97AA /* TGPhotoEditorBlurView.m */,
 				D07BC74A1F2A2B3700ED97AA /* TGPhotoEditorCollectionView.h */,
 				D07BC74B1F2A2B3700ED97AA /* TGPhotoEditorCollectionView.m */,
 				D07BC74C1F2A2B3700ED97AA /* TGPhotoEditorCurvesHistogramView.h */,
@@ -3187,8 +3153,6 @@
 				D07BC7DB1F2A2C0B00ED97AA /* PGPhotoFilter.m */,
 				D07BC7DC1F2A2C0B00ED97AA /* PGPhotoFilterDefinition.h */,
 				D07BC7DD1F2A2C0B00ED97AA /* PGPhotoFilterDefinition.m */,
-				D07BC7DE1F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.h */,
-				D07BC7DF1F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.m */,
 				D07BC7E01F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.h */,
 				D07BC7E11F2A2C0B00ED97AA /* PGPhotoGaussianBlurFilter.m */,
 				D07BC7E21F2A2C0B00ED97AA /* PGPhotoHistogram.h */,
@@ -3418,8 +3382,6 @@
 				D026603D1F34A7F8000E2DC5 /* TGLocationPickerController.m */,
 				D026603E1F34A7F8000E2DC5 /* TGLocationPinAnnotationView.h */,
 				D026603F1F34A7F8000E2DC5 /* TGLocationPinAnnotationView.m */,
-				D02660401F34A7F8000E2DC5 /* TGLocationPinView.h */,
-				D02660411F34A7F8000E2DC5 /* TGLocationPinView.m */,
 				D02660421F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.h */,
 				D02660431F34A7F8000E2DC5 /* TGLocationReverseGeocodeResult.m */,
 				D02660441F34A7F8000E2DC5 /* TGLocationSectionHeaderCell.h */,
@@ -3477,8 +3439,6 @@
 				D07BC82E1F2A2D0C00ED97AA /* TGSecretTimerMenu.m */,
 				D07BC82F1F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.h */,
 				D07BC8301F2A2D0C00ED97AA /* TGSecretTimerPickerItemView.m */,
-				D07BC8311F2A2D0C00ED97AA /* TGSecretTimerValueController.h */,
-				D07BC8321F2A2D0C00ED97AA /* TGSecretTimerValueController.m */,
 				D07BC8331F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.h */,
 				D07BC8341F2A2D0C00ED97AA /* TGSecretTimerValueControllerItemView.m */,
 			);
@@ -3696,8 +3656,6 @@
 				D07BCABA1F2B4E2600ED97AA /* TGTransitionLayout.m */,
 				D07BCABD1F2B4E3900ED97AA /* UICollectionView+TGTransitioning.h */,
 				D07BCABE1F2B4E3900ED97AA /* UICollectionView+TGTransitioning.m */,
-				D07BCAC11F2B4E6200ED97AA /* TGAttachmentCameraCell.h */,
-				D07BCAC21F2B4E6200ED97AA /* TGAttachmentCameraCell.m */,
 				D07BCAC31F2B4E6200ED97AA /* TGAttachmentCameraView.h */,
 				D07BCAC41F2B4E6200ED97AA /* TGAttachmentCameraView.m */,
 				D07BCACB1F2B4E7300ED97AA /* TGMediaAvatarMenuMixin.h */,
@@ -3967,7 +3925,6 @@
 				D01778511F1F961D0044446D /* TGVideoInfo.h in Headers */,
 				D07BCBEF1F2B72DC00ED97AA /* STKDataSource.h in Headers */,
 				D07BCA0F1F2A9A2B00ED97AA /* TGMediaPickerLayoutMetrics.h in Headers */,
-				D07BC8391F2A2D0C00ED97AA /* TGSecretTimerValueController.h in Headers */,
 				D017791A1F20F4A20044446D /* TGImageLuminanceMap.h in Headers */,
 				D01777601F1F8FE60044446D /* TGBotInfo.h in Headers */,
 				D07BC9741F2A467D00ED97AA /* TGPhotoBrushSettingsView.h in Headers */,
@@ -4088,7 +4045,6 @@
 				D07BCB741F2B6A5600ED97AA /* TGEmbedYoutubePlayerView.h in Headers */,
 				D07BC8C51F2A37EC00ED97AA /* TGPhotoPaintEntityView.h in Headers */,
 				D0177AA11F2222990044446D /* TGKeyCommand.h in Headers */,
-				D07BC8C91F2A37EC00ED97AA /* TGPhotoPaintScrollView.h in Headers */,
 				D07BCBB51F2B6F6300ED97AA /* CBCoubLoopCompositionMaker.h in Headers */,
 				D07BC9351F2A3BD100ED97AA /* TGPhotoTextEntityView.h in Headers */,
 				D0B6D3E01F5986DD003BBB35 /* TGModernConversationInputMicButton.h in Headers */,
@@ -4284,7 +4240,6 @@
 				D01777681F1F8FE60044446D /* TGUser.h in Headers */,
 				D07BCA551F2A9E1600ED97AA /* TGDraggableCollectionView.h in Headers */,
 				D07BC7901F2A2B5A00ED97AA /* TGPhotoEditorBlurAreaView.h in Headers */,
-				D07BCAC61F2B4E6200ED97AA /* TGAttachmentCameraCell.h in Headers */,
 				D07BC90F1F2A380D00ED97AA /* TGPaintingWrapperView.h in Headers */,
 				D07BC8561F2A2DBD00ED97AA /* TGMenuSheetButtonItemView.h in Headers */,
 				D01779581F21031F0044446D /* TGPhotoEditorUtils.h in Headers */,
@@ -4353,7 +4308,6 @@
 				D0177B2F1F26430D0044446D /* TGCameraPreviewView.h in Headers */,
 				D01779E71F2139980044446D /* POPAnimationExtras.h in Headers */,
 				D01778071F1F961D0044446D /* TGInvoiceMediaAttachment.h in Headers */,
-				D02660621F34A7F8000E2DC5 /* TGLocationPinView.h in Headers */,
 				D07BC8581F2A2DBD00ED97AA /* TGMenuSheetCollectionView.h in Headers */,
 				D07BCA301F2A9AE700ED97AA /* TGModernGallerySelectableItem.h in Headers */,
 				D07BC9211F2A380D00ED97AA /* TGPaintSlice.h in Headers */,
@@ -4442,7 +4396,6 @@
 				D01779961F21082E0044446D /* PSLMDBTable.h in Headers */,
 				D01778051F1F961D0044446D /* TGWebDocument.h in Headers */,
 				D07BC76C1F2A2B3700ED97AA /* TGPhotoEditorBlurTypeButton.h in Headers */,
-				D07BC9091F2A380D00ED97AA /* TGPaintFaceDebugView.h in Headers */,
 				D0177A0B1F2139980044446D /* POPVector.h in Headers */,
 				D07BC9431F2A3E4400ED97AA /* TGSuggestionContext.h in Headers */,
 				D07BC9011F2A380D00ED97AA /* TGPaintBrushPreview.h in Headers */,
@@ -4451,7 +4404,6 @@
 				D07BC99D1F2A494000ED97AA /* TGStickerCollectionViewCell.h in Headers */,
 				09750FC11F30DCDC001B9886 /* TGClipboardGalleryPhotoItemView.h in Headers */,
 				D07BC7BE1F2A2BDD00ED97AA /* PGPhotoToolComposer.h in Headers */,
-				D07BC8141F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.h in Headers */,
 				D07BCB6A1F2B6A5600ED97AA /* TGEmbedSoundCloudPlayerView.h in Headers */,
 				D07BC6D71F2A18FE00ED97AA /* UIControl+HitTestEdgeInsets.h in Headers */,
 				D07BCAFB1F2B517900ED97AA /* TGLegacyMediaPickerTipView.h in Headers */,
@@ -4483,7 +4435,6 @@
 				D07BC8081F2A2C0B00ED97AA /* PGPhotoEnhanceColorConversionFilter.h in Headers */,
 				D0177A841F2218AB0044446D /* TGModernGalleryImageItemContainerView.h in Headers */,
 				D0F9720C1FFDA2A7002595C8 /* TGClipboardMenu.h in Headers */,
-				D07BC76E1F2A2B3700ED97AA /* TGPhotoEditorBlurView.h in Headers */,
 				D07BC8481F2A2DA200ED97AA /* TGMenuSheetController.h in Headers */,
 				D07BC8061F2A2C0B00ED97AA /* PGPhotoCustomFilterPass.h in Headers */,
 				D07BCB601F2B6A5600ED97AA /* TGEmbedPIPPullArrowView.h in Headers */,
@@ -4713,7 +4664,6 @@
 				D07BC8CE1F2A37EC00ED97AA /* TGPhotoPaintSettingsView.m in Sources */,
 				D07BCAA51F2B445E00ED97AA /* TGMediaGroupCell.m in Sources */,
 				D07BCAEC1F2B507600ED97AA /* TGAttachmentGifCell.m in Sources */,
-				D07BC8151F2A2C0B00ED97AA /* PGPhotoFilterThumbnailManager.m in Sources */,
 				D01779591F21031F0044446D /* TGPhotoEditorUtils.m in Sources */,
 				D07BC7751F2A2B3700ED97AA /* TGPhotoEditorCurvesToolView.m in Sources */,
 				D01778B71F1FFFE30044446D /* TGToolbarButton.m in Sources */,
@@ -4774,7 +4724,6 @@
 				D01778C31F200AF70044446D /* TGAnimationBlockDelegate.m in Sources */,
 				D07BC85F1F2A2DBD00ED97AA /* TGMenuSheetTitleItemView.m in Sources */,
 				D07BC6EC1F2A19A700ED97AA /* TGCameraFlashActiveView.m in Sources */,
-				D07BC8CA1F2A37EC00ED97AA /* TGPhotoPaintScrollView.m in Sources */,
 				D07BC9301F2A3BA600ED97AA /* TGPhotoEntitiesContainerView.m in Sources */,
 				D07BCA2A1F2A9A9600ED97AA /* TGModernGalleryImageItem.m in Sources */,
 				D01777831F1F93250044446D /* TGImageInfo.mm in Sources */,
@@ -4977,7 +4926,6 @@
 				D07BC8661F2A2F1300ED97AA /* TGMediaPickerCaptionInputPanel.m in Sources */,
 				D0177AD11F23D9810044446D /* ASQueue.m in Sources */,
 				D07BC8D01F2A37EC00ED97AA /* TGPhotoPaintSettingsWrapperView.m in Sources */,
-				D07BC83A1F2A2D0C00ED97AA /* TGSecretTimerValueController.m in Sources */,
 				D07BC9611F2A3F0A00ED97AA /* TGGradientLabel.m in Sources */,
 				D07BC9101F2A380D00ED97AA /* TGPaintingWrapperView.m in Sources */,
 				D02660591F34A7F8000E2DC5 /* TGLocationCurrentLocationCell.m in Sources */,
@@ -5004,7 +4952,6 @@
 				D07BCC061F2B82D100ED97AA /* TGModernConversationTitleActivityIndicator.m in Sources */,
 				D04269081F586A070037ECE8 /* TGVideoMessageScrubberThumbnailView.m in Sources */,
 				D07BCB361F2B65F100ED97AA /* TGBuiltinWallpaperInfo.m in Sources */,
-				D07BC90A1F2A380D00ED97AA /* TGPaintFaceDebugView.m in Sources */,
 				D017785A1F1F961D0044446D /* TGImageMediaAttachment.m in Sources */,
 				09053D7D20A5CCF10029652D /* TGPassportOCR.mm in Sources */,
 				D017784C1F1F961D0044446D /* TGUnsupportedMediaAttachment.m in Sources */,
@@ -5155,10 +5102,8 @@
 				D07BCBC61F2B6F6300ED97AA /* CBLibrary.m in Sources */,
 				D017789E1F1FC99A0044446D /* LegacyComponentsInternal.m in Sources */,
 				D07BC9B31F2A4B6600ED97AA /* TGStickerAssociation.m in Sources */,
-				D07BC76F1F2A2B3700ED97AA /* TGPhotoEditorBlurView.m in Sources */,
 				D07BCAEE1F2B507600ED97AA /* TGAttachmentVideoCell.m in Sources */,
 				D026605F1F34A7F8000E2DC5 /* TGLocationPickerController.m in Sources */,
-				D07BCAC71F2B4E6200ED97AA /* TGAttachmentCameraCell.m in Sources */,
 				D0177A3D1F21F2E50044446D /* TGTimerTarget.m in Sources */,
 				D017784E1F1F961D0044446D /* TGForwardedMessageMediaAttachment.m in Sources */,
 				D07BCBD01F2B6F6300ED97AA /* NSDictionary+CBExtensions.m in Sources */,
@@ -5173,7 +5118,6 @@
 				D07BCA911F2B443700ED97AA /* TGMediaAssetsMomentsController.m in Sources */,
 				D07BCBC41F2B6F6300ED97AA /* CBJSONCoubMapper.m in Sources */,
 				D07BC7871F2A2B3700ED97AA /* TGPhotoEditorTabController.m in Sources */,
-				D02660631F34A7F8000E2DC5 /* TGLocationPinView.m in Sources */,
 				D07BCA121F2A9A2B00ED97AA /* TGMediaPickerModernGalleryMixin.m in Sources */,
 				D07BC8421F2A2D7900ED97AA /* TGPhotoCaptionController.m in Sources */,
 				D07BC93C1F2A3C1F00ED97AA /* TGPhotoQualityController.m in Sources */,
