@@ -107,6 +107,7 @@
 
 #import "TGLegacyComponentsContext.h"
 #import "TGLightGramSettingsPages.h"
+#import "TGLightGramUpdateController.h"
 #import "../LightGramRuntime/LGLogCatalog.h"
 
 #define OGHelperLogSnapshotRequestNotification "dev.notdevv.lightgramd.logs.request"
@@ -992,7 +993,7 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
     _logsItem = [[TGDisclosureActionCollectionItem alloc] initWithTitle:@"Логи" action:@selector(logsPressed)];
     _logsItem.deselectAutomatically = true;
 
-    _lightgramSettingsItem = [[TGDisclosureActionCollectionItem alloc] initWithTitle:TGLocalized(@"LightGramSettings.Title") action:@selector(lightgramSettingsPressed)];
+    _lightgramSettingsItem = [[TGDisclosureActionCollectionItem alloc] initWithTitle:TGLocalized(@"LightGramUpdate.Title") action:@selector(lightgramSettingsPressed)];
     _lightgramSettingsItem.deselectAutomatically = true;
 
 #if LG_PLUGINS_AVAILABLE
@@ -1430,7 +1431,7 @@ static const CGFloat TGAccountSettingsBrandedDetailsTextScale = 1.2f;
     _dialogFiltersItem.subtitle = modern ? TGLocalized(@"DialogFilters.SettingsInfo") : nil;
     _devicesItem.subtitle = modern ? TGLocalized(@"LightGramSettings.DevicesInfo") : nil;
     _callSettingsItem.subtitle = modern ? TGLocalized(@"LightGramSettings.CallsInfo") : nil;
-    _lightgramSettingsItem.subtitle = modern ? TGLocalized(@"LightGramSettings.LightGramInfo") : nil;
+    _lightgramSettingsItem.subtitle = modern ? [TGLightGramUpdateController statusVariant] : nil;
     _logsItem.subtitle = modern ? TGLocalized(@"LightGramSettings.LogsInfo") : nil;
     _accountItem.subtitle = TGLocalized(@"LightGramSettings.AccountInfo");
     _modernLanguageItem.subtitle = TGLocalized(@"Localization.LanguageName");
@@ -2031,7 +2032,7 @@ static NSString *TGIOS6SettingsProfileMusicTitle(TGDocumentMediaAttachment *docu
 
 - (void)lightgramSettingsPressed
 {
-    TGLightGramRootSettingsController *controller = [[TGLightGramRootSettingsController alloc] init];
+    TGLightGramUpdateController *controller = [[TGLightGramUpdateController alloc] init];
     controller.presentation = self.presentation;
     [self.navigationController pushViewController:controller animated:true];
 }
@@ -2305,7 +2306,7 @@ static NSString *TGIOS6SettingsProfileMusicTitle(TGDocumentMediaAttachment *docu
     [self setRightBarButtonItem:[self editBarButtonItem] animated:false];
     
     _savedMessagesItem.title = TGLocalized(@"Settings.SavedMessages");
-    _lightgramSettingsItem.title = TGLocalized(@"LightGramSettings.Title");
+    _lightgramSettingsItem.title = TGLocalized(@"LightGramUpdate.Title");
     _notificationsItem.title = TGLocalized(@"Settings.NotificationsAndSounds");
     _privacySettingsItem.title = TGLocalized(@"Settings.PrivacySettings");
     _chatSettingsItem.title = TGLocalized(@"Settings.ChatSettings");

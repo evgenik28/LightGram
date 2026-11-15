@@ -1,6 +1,6 @@
-#import "TGCollectionMenuController.h"
+#import "TGLightGramSettingsController.h"
 
-@interface TGAppearanceController : TGCollectionMenuController
+@interface TGAppearanceController : TGLightGramSettingsController
 
 + (NSArray *)previewMessages;
 

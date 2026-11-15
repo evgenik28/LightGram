@@ -1,13 +1,4 @@
-#import "TGLightGramSettingsController.h"
-
-@interface TGLightGramRootSettingsController : TGLightGramSettingsController
-@end
-
-@interface TGLightGramGeneralSettingsController : TGLightGramSettingsController
-@end
-
-@interface TGLightGramMessagesSettingsController : TGLightGramSettingsController
-@end
+#import <Foundation/Foundation.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +6,7 @@ extern "C" {
 
 NSArray *TGLightGramDoubleTapActions(bool outgoing);
 NSArray *TGLightGramMenuActionIdentifiers(void);
+NSString *TGLightGramMenuActionTitle(NSString *identifier);
 
 #ifdef __cplusplus
 }

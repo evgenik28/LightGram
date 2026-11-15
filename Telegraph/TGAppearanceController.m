@@ -24,6 +24,7 @@
 #import "TGAppearanceAutoNightController.h"
 #import "TGStickerPacksSettingsController.h"
 #import "TGLightGramSettings.h"
+#import "TGLightGramSettingsPages.h"
 #import "TGCloudTheme.h"
 #import "TGCloudThemeCollectionItem.h"
 #import "TGLightGramNightSurfaceController.h"
@@ -51,6 +52,7 @@
     TGDisclosureActionCollectionItem *_autoNightItem;
     TGSwitchCollectionItem *_callsTabItem;
     TGCheckCollectionItem *_interfaceModernItem;
+    TGLightGramActionCollectionItem *_messageMenuStyleItem;
 
 }
 
@@ -62,7 +64,7 @@
 
 - (instancetype)init
 {
-    self = [super init];
+    self = [super initWithTitle:TGLocalized(@"Appearance.Title")];
     if (self != nil)
     {
         _actionHandle = [[ASHandle alloc] initWithDelegate:self releaseOnMainThread:true];
@@ -159,6 +161,34 @@
             [self.menuSections addSection:[[TGCollectionMenuSection alloc] initWithItems:@[stickersItem]]];
         }
 
+        {
+            [self.menuSections addSection:[self sectionWithHeader:TGLocalized(@"LightGramSettings.Stickers") items:@[
+                [self switchWithTitle:TGLocalized(@"LightGramSettings.AnimatedStickers") key:TGLightGramSettingMessagesAnimatedStickers description:TGLocalized(@"LightGramSettings.AnimatedStickersInfo")],
+                [self switchWithTitle:TGLocalized(@"LightGramSettings.AnimatedEmoji") key:TGLightGramSettingMessagesAnimatedEmoji description:TGLocalized(@"LightGramSettings.AnimatedEmojiInfo")]
+            ] footer:nil]];
+
+            _messageMenuStyleItem = [self choiceWithTitle:TGLocalized(@"LightGramSettings.MessageMenuStyle") key:TGLightGramSettingGeneralMessageMenuStyle options:@[TGLocalized(@"LightGramSettings.MessageMenuStyleIOS"), TGLocalized(@"LightGramSettings.MessageMenuStyleAndroid")] description:TGLocalized(@"LightGramSettings.MessageMenuStyleInfo")];
+            [self.menuSections addSection:[self sectionWithHeader:nil items:@[
+                [self switchWithTitle:TGLocalized(@"LightGramSettings.NewChats") key:TGLightGramSettingGeneralNewChats description:TGLocalized(@"LightGramSettings.NewChatsInfo")],
+                _messageMenuStyleItem
+            ] footer:nil]];
+
+            NSMutableArray *menuItems = [[NSMutableArray alloc] init];
+            for (NSString *identifier in TGLightGramMenuActionIdentifiers())
+            {
+                bool visible = ![[TGLightGramSettings arrayForKey:TGLightGramSettingMessagesMenuHiddenActions] containsObject:identifier];
+                [menuItems addObject:[self switchWithTitle:TGLightGramMenuActionTitle(identifier) value:visible toggled:^(bool value)
+                {
+                    NSMutableArray *hidden = [[TGLightGramSettings arrayForKey:TGLightGramSettingMessagesMenuHiddenActions] mutableCopy];
+                    [hidden removeObject:identifier];
+                    if (!value)
+                        [hidden addObject:identifier];
+                    [TGLightGramSettings setArray:hidden forKey:TGLightGramSettingMessagesMenuHiddenActions];
+                }]];
+            }
+            [self.menuSections addSection:[self sectionWithHeader:TGLocalized(@"LightGramSettings.MessageMenu") items:menuItems footer:TGLocalized(@"LightGramSettings.MessageMenuInfo")]];
+        }
+
         _themeSection = [[TGCollectionMenuSection alloc] initWithItems:@
         [
          [[TGHeaderCollectionItem alloc] initWithTitle:TGLocalized(@"Appearance.ColorTheme")],
@@ -184,9 +214,21 @@
     [ActionStageInstance() removeWatcher:self];
 }
 
+- (void)rebuild
+{
+}
+
 - (void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
+    
+    NSArray *menuStyleTitles = @[TGLocalized(@"LightGramSettings.MessageMenuStyleIOS"), TGLocalized(@"LightGramSettings.MessageMenuStyleAndroid")];
+    NSInteger menuStyle = [TGLightGramSettings integerForKey:TGLightGramSettingGeneralMessageMenuStyle];
+    if (menuStyle >= 0 && menuStyle < (NSInteger)menuStyleTitles.count && ![_messageMenuStyleItem.variant isEqualToString:menuStyleTitles[(NSUInteger)menuStyle]])
+    {
+        _messageMenuStyleItem.variant = menuStyleTitles[(NSUInteger)menuStyle];
+        [self.collectionView reloadData];
+    }
     
     [self updateThemeItems];
     [self updateNightSurfaceItem];
