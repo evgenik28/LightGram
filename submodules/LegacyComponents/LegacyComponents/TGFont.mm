@@ -950,7 +950,7 @@ static UIImage *TGNativeEmojiImageOfSizeCurrentThread(NSString *emoji, CGFloat s
 
     CGSize glyphSize = [emoji sizeWithFont:font];
     CGSize canvasSize = CGSizeMake(MAX(size, CGCeil(glyphSize.width)) + 4.0f, MAX(size, CGCeil(glyphSize.height)) + 4.0f);
-    UIGraphicsBeginImageContextWithOptions(canvasSize, false, 1.0f);
+    UIGraphicsBeginImageContextWithOptions(canvasSize, false, iosMajorVersion() >= 4 ? 0.0f : 1.0f);
     CGFloat drawX = CGFloor((canvasSize.width - glyphSize.width) / 2.0f);
     CGFloat drawY = CGFloor((canvasSize.height - glyphSize.height) / 2.0f);
     [emoji drawAtPoint:CGPointMake(drawX, drawY) withFont:font];

@@ -83,7 +83,7 @@ NSString *TGCustomEmojiThumbnailUri(TGDocumentMediaAttachment *document)
     [uri appendFormat:@"&size=%d", document.size];
     if (document.mimeType.length != 0)
         [uri appendFormat:@"&mimeType=%@", [TGStringUtils stringByEscapingForURL:document.mimeType]];
-    [uri appendString:@"&width=40&height=40&highQuality=1"];
+    [uri appendString:@"&width=128&height=128&highQuality=1"];
     return uri;
 }
 
