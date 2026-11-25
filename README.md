@@ -7,3 +7,7 @@ Credits
 Telegram — original Telegram for iOS codebase
 Twelve / Twelvium by theanazerka — legacy iOS compatibility code and related modifications
 https://github.com/theanazerka/twelve-project
+
+быстренько переобуваюсь а то пизды даст мне илья гиф, поэтому:
+
+This is a fork client "OneGram"
