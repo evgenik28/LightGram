@@ -10,4 +10,4 @@ https://github.com/theanazerka/twelve-project
 
 быстренько переобуваюсь а то пизды даст мне илья гиф, поэтому:
 
-This is a fork client "OneGram"
+This client - it's fork "OneGram"
